@@ -76,6 +76,7 @@ const translations = {
     recluster_confirm_btn: "Bắt đầu gộp",
     recluster_running: "Đang gộp...",
     recluster_result: (merged, skipped) => `Đã gộp ${merged} cặp người. Bỏ qua ${skipped} cặp vì cả 2 đều đã có tên khác nhau (cần xác nhận tay).`,
+    scan_errors_count: (n) => `${n} ảnh lỗi`,
   },
   en: {
     library: "Photo Library",
@@ -151,6 +152,7 @@ const translations = {
     recluster_confirm_btn: "Start merging",
     recluster_running: "Merging...",
     recluster_result: (merged, skipped) => `Merged ${merged} pairs. Skipped ${skipped} pairs because both already had different names (needs manual confirmation).`,
+    scan_errors_count: (n) => `${n} failed image${n === 1 ? "" : "s"}`,
   },
 };
 
@@ -406,7 +408,11 @@ function pollScanStatus() {
     const status = await apiGet("/scan/status");
     const pct = status.total > 0 ? Math.round((status.processed / status.total) * 100) : 0;
     document.getElementById("progressFill").style.width = pct + "%";
-    document.getElementById("scanMessage").textContent = status.message || status.status;
+    const scanMessage = status.message || status.status;
+    const failedCount = status.failed || 0;
+    document.getElementById("scanMessage").textContent = failedCount
+      ? `${scanMessage} — ${t("scan_errors_count", failedCount)}`
+      : scanMessage;
 
     if (status.gpu_active !== null && status.gpu_active !== undefined) {
       const badge = document.getElementById("gpuBadge");

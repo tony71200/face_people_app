@@ -114,12 +114,22 @@ def upsert_image(conn, path, filename, width, height, mtime, scan_root=None, rel
         return existing["id"], False  # không đổi -> không cần quét lại
     if existing:
         kept_rel_path = existing["rel_path"] or rel_path
+        old_face_ids = [
+            row["id"]
+            for row in conn.execute(
+                "SELECT id FROM faces WHERE image_id=?", (existing["id"],)
+            ).fetchall()
+        ]
         conn.execute(
             """UPDATE images SET width=?, height=?, mtime=?, scan_root=?, rel_path=?,
                scanned_at=datetime('now') WHERE id=?""",
             (width, height, mtime, scan_root, kept_rel_path, existing["id"]),
         )
         conn.execute("DELETE FROM faces WHERE image_id=?", (existing["id"],))
+        for face_id in old_face_ids:
+            face_thumb_path = THUMBS_DIR / f"face_{face_id}.jpg"
+            if face_thumb_path.exists():
+                face_thumb_path.unlink()
         conn.commit()
         return existing["id"], True
     cur = conn.execute(

@@ -41,6 +41,8 @@ SCAN_STATE = {
     "total": 0,
     "message": "",
     "gpu_active": None,
+    "failed": 0,
+    "errors": [],
 }
 SCAN_LOCK = threading.Lock()
 
@@ -55,8 +57,11 @@ def _do_scan(folder: str, recursive: bool, use_gpu: bool):
     conn = db.get_conn()
     try:
         with SCAN_LOCK:
-            SCAN_STATE.update(status="scanning", processed=0, total=0,
-                               message="Đang tìm ảnh...", gpu_active=None)
+            SCAN_STATE.update(
+                status="scanning", processed=0, total=0,
+                message="Đang tìm ảnh...", gpu_active=None,
+                failed=0, errors=[],
+            )
 
         scan_root = str(Path(folder).resolve())
         paths = utils.list_images(folder, recursive=recursive)
@@ -101,7 +106,12 @@ def _do_scan(folder: str, recursive: bool, use_gpu: bool):
                             crop = utils.crop_face(pil_img, bbox)
                             utils.save_jpeg(crop, str(face_thumb_path))
             except Exception as e:
-                print(f"[scan] Lỗi ở ảnh {path}: {e}")
+                error_message = str(e)
+                print(f"[scan] Lỗi ở ảnh {path}: {error_message}")
+                with SCAN_LOCK:
+                    SCAN_STATE["failed"] += 1
+                    SCAN_STATE["errors"].append({"path": path, "error": error_message})
+                    SCAN_STATE["errors"] = SCAN_STATE["errors"][-20:]
 
             with SCAN_LOCK:
                 SCAN_STATE["processed"] = i + 1
@@ -117,9 +127,11 @@ def _do_scan(folder: str, recursive: bool, use_gpu: bool):
         result = clustering.run_incremental_clustering(conn, progress_cb=_progress)
 
         with SCAN_LOCK:
+            failed = SCAN_STATE["failed"]
+            done_prefix = f"Hoàn tất với {failed} ảnh lỗi" if failed else "Hoàn tất"
             SCAN_STATE.update(
                 status="done",
-                message=f"Hoàn tất. {result['new_persons']} người mới, "
+                message=f"{done_prefix}. {result['new_persons']} người mới, "
                          f"{result['assigned_existing']} khuôn mặt khớp người đã biết.",
             )
     except Exception as e:
