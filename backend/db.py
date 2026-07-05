@@ -19,6 +19,8 @@ def get_conn():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 5000")
+    conn.execute("PRAGMA journal_mode = WAL")
     return conn
 
 
@@ -160,14 +162,36 @@ def count_images(conn):
 
 # ---------- Faces ----------
 
-def add_face(conn, image_id, bbox, det_score, embedding, person_id=None):
+def add_face(conn, image_id, bbox, det_score, embedding, person_id=None, commit=True):
     cur = conn.execute(
         """INSERT INTO faces (image_id, bbox_x1, bbox_y1, bbox_x2, bbox_y2, det_score, embedding, person_id)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (image_id, bbox[0], bbox[1], bbox[2], bbox[3], det_score, json.dumps(embedding), person_id),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return cur.lastrowid
+
+
+def add_faces_batch(conn, image_id, faces):
+    face_ids = []
+    try:
+        with conn:
+            for face in faces:
+                face_ids.append(
+                    add_face(
+                        conn,
+                        image_id,
+                        face["bbox"],
+                        face["det_score"],
+                        face["embedding"],
+                        commit=False,
+                    )
+                )
+    except Exception:
+        conn.rollback()
+        raise
+    return face_ids
 
 
 def get_face(conn, face_id):
@@ -192,9 +216,22 @@ def get_faces_for_image(conn, image_id):
     return conn.execute("SELECT * FROM faces WHERE image_id=?", (image_id,)).fetchall()
 
 
-def set_face_person(conn, face_id, person_id):
+def set_face_person(conn, face_id, person_id, commit=True):
     conn.execute("UPDATE faces SET person_id=? WHERE id=?", (person_id, face_id))
-    conn.commit()
+    if commit:
+        conn.commit()
+
+
+def set_faces_person_batch(conn, assignments):
+    try:
+        with conn:
+            conn.executemany(
+                "UPDATE faces SET person_id=? WHERE id=?",
+                [(person_id, face_id) for face_id, person_id in assignments],
+            )
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def reassign_faces_person(conn, from_person_id, to_person_id):
@@ -212,12 +249,13 @@ def count_faces_for_person(conn, person_id):
 
 # ---------- Persons ----------
 
-def create_person(conn, name=None, representative_face_id=None):
+def create_person(conn, name=None, representative_face_id=None, commit=True):
     cur = conn.execute(
         "INSERT INTO persons (name, representative_face_id) VALUES (?, ?)",
         (name, representative_face_id),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return cur.lastrowid
 
 

@@ -261,12 +261,28 @@
 
 <!-- Recluster Confirm Modal -->
 <div id="reclusterModal" class="modal-overlay" style="display:none">
-  <div class="modal">
+  <div class="modal modal-wide">
     <h2 data-i18n="recluster_title">Gộp lại theo thông số hiện tại?</h2>
     <p class="modal-sub" data-i18n="recluster_sub">App sẽ tự gộp các nhóm người có độ giống nhau cao (theo ngưỡng "khớp người đã biết" trong Cài đặt). Nếu 2 người ĐỀU đã được đặt tên, app sẽ KHÔNG tự gộp để tránh ảnh hưởng nhóm bạn đã xác nhận — những trường hợp đó vẫn cần xác nhận tay qua "Kiểm tra lại nhóm".</p>
     <div id="reclusterResult" class="organize-result" style="display:none"></div>
+    <div class="recluster-status-panel">
+      <div class="recluster-message-row">
+        <span class="recluster-label">Status</span>
+        <span id="reclusterStatus">idle</span>
+      </div>
+      <div class="recluster-message-row">
+        <span class="recluster-label">Message</span>
+        <span id="reclusterMessage">—</span>
+      </div>
+      <div class="recluster-counters">
+        <div><strong id="reclusterMergedCount">0</strong><span>merged_count</span></div>
+        <div><strong id="reclusterSkippedConflicts">0</strong><span>skipped_named_conflicts</span></div>
+      </div>
+      <textarea id="reclusterLogs" class="recluster-logs" readonly placeholder="Logs"></textarea>
+    </div>
     <div class="modal-buttons">
-      <button id="cancelRecluster" class="btn-secondary" data-i18n="cancel_btn">Huỷ</button>
+      <button id="cancelRecluster" class="btn-secondary" data-i18n="close_btn">Đóng</button>
+      <button id="requestStopRecluster" class="btn-danger" data-i18n="recluster_stop_btn">Yêu cầu dừng</button>
       <button id="confirmRecluster" class="btn-primary" data-i18n="recluster_confirm_btn">Bắt đầu gộp</button>
     </div>
   </div>
