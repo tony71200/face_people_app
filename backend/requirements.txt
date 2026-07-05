@@ -1,0 +1,16 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+numpy>=1.24,<2.0
+opencv-python-headless>=4.8
+scikit-learn>=1.3
+Pillow>=10.0
+pillow-heif>=0.15
+insightface>=0.7.3
+onnxruntime-gpu>=1.17
+python-multipart>=0.0.9
+
+# Nếu bạn KHÔNG có GPU/CUDA phù hợp, hãy gỡ dòng onnxruntime-gpu ở trên
+# và cài bản CPU thay thế:
+#   pip uninstall onnxruntime-gpu
+#   pip install onnxruntime

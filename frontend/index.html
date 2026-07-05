@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ảnh của tôi</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-title" data-i18n="library">Thư viện ảnh</div>
+    <nav class="nav">
+      <button class="nav-item active" data-view="photos">
+        <svg viewBox="0 0 24 24" class="icon"><path d="M4 5h16v14H4z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="9" cy="10" r="1.6" fill="currentColor"/><path d="M4 16l5-5 4 4 3-3 4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        <span data-i18n="nav_photos">Ảnh</span>
+      </button>
+      <button class="nav-item" data-view="people">
+        <svg viewBox="0 0 24 24" class="icon"><circle cx="9" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 19c0-3.3 2.7-6 6-6s6 2.7 6 6" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="17" cy="9" r="2.3" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M15 19c0-2.6 1-4.6 2.5-5.7" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+        <span data-i18n="nav_people">Con người</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-tools">
+      <button id="feedbackBtn" class="nav-item tool-item">
+        <svg viewBox="0 0 24 24" class="icon"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M18 4v4h-4M6 20v-4h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span data-i18n="feedback_btn">Kiểm tra lại nhóm</span>
+      </button>
+      <button id="organizeBtn" class="nav-item tool-item">
+        <svg viewBox="0 0 24 24" class="icon"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span data-i18n="organize_btn">Tạo thư mục theo tên</span>
+      </button>
+      <button id="reclusterBtn" class="nav-item tool-item">
+        <svg viewBox="0 0 24 24" class="icon"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M18 4v4h-4M6 20v-4h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg>
+        <span data-i18n="recluster_btn">Gộp lại (Reclustering)</span>
+      </button>
+      <button id="settingsBtn" class="nav-item tool-item">
+        <svg viewBox="0 0 24 24" class="icon"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span data-i18n="settings_btn">Cài đặt</span>
+      </button>
+    </div>
+
+    <div class="sidebar-footer">
+      <label class="lang-switch">
+        <input type="checkbox" id="langToggle">
+        <span class="lang-track">
+          <span class="lang-label lang-vi">VI</span>
+          <span class="lang-label lang-en">EN</span>
+        </span>
+      </label>
+      <button id="scanBtn" class="btn-primary" data-i18n="scan_button">+ Quét thư mục</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <header class="topbar">
+      <h1 id="viewTitle" data-i18n="all_photos">Tất cả ảnh</h1>
+      <div id="gpuBadge" class="gpu-badge" style="display:none"></div>
+    </header>
+
+    <section id="view-photos" class="view active">
+      <div id="photosGrid" class="grid"></div>
+      <div id="photosEmpty" class="empty-state" style="display:none">
+        <p data-i18n="empty_photos">Chưa có ảnh nào.</p>
+        <p class="empty-sub" data-i18n="empty_photos_sub">Nhấn "Quét thư mục" ở góc trái để bắt đầu.</p>
+      </div>
+    </section>
+
+    <section id="view-people" class="view">
+      <div id="peopleGrid" class="grid people-grid"></div>
+      <div id="peopleEmpty" class="empty-state" style="display:none">
+        <p data-i18n="empty_people">Chưa nhận diện được ai.</p>
+        <p class="empty-sub" data-i18n="empty_people_sub">Quét một thư mục ảnh để bắt đầu nhóm khuôn mặt.</p>
+      </div>
+    </section>
+
+    <section id="view-person-detail" class="view">
+      <button id="backToPeople" class="btn-back" data-i18n="back_to_people">‹ Con người</button>
+      <div class="person-header">
+        <img id="personHeaderThumb" class="person-header-thumb" />
+        <div class="person-header-info">
+          <input id="personNameInput" class="person-name-input" data-i18n-placeholder="placeholder_name" placeholder="Thêm tên..." />
+          <div id="personCount" class="person-count"></div>
+        </div>
+        <div class="person-actions">
+          <button id="mergeBtn" class="btn-secondary" data-i18n="merge_btn">Gộp với người khác...</button>
+          <button id="deletePersonBtn" class="btn-danger" data-i18n="delete_person_btn">Xoá người này</button>
+        </div>
+      </div>
+      <div id="personPhotosGrid" class="grid"></div>
+    </section>
+  </main>
+</div>
+
+<!-- Scan Modal -->
+<div id="scanModal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <h2 data-i18n="scan_modal_title">Quét thư mục ảnh</h2>
+    <p class="modal-sub" data-i18n="scan_modal_sub">Nhập đường dẫn thư mục chứa ảnh trên máy bạn (hỗ trợ JPG, PNG, WEBP, HEIC).</p>
+    <div class="folder-input-row">
+      <input id="folderInput" type="text" data-i18n-placeholder="folder_placeholder" placeholder="Ví dụ: C:\Users\Tony\Pictures hoặc /home/tony/photos" />
+      <button id="browseFolderBtn" class="btn-icon" title="Chọn thư mục...">
+        <svg viewBox="0 0 24 24" class="icon"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+      </button>
+    </div>
+    <label class="checkbox-row">
+      <input type="checkbox" id="recursiveCheck" checked>
+      <span data-i18n="recursive_label">Bao gồm thư mục con</span>
+    </label>
+    <label class="checkbox-row">
+      <input type="checkbox" id="gpuCheck" checked>
+      <span data-i18n="gpu_label">Ưu tiên dùng GPU (CUDA)</span>
+    </label>
+    <div id="scanProgress" class="scan-progress" style="display:none">
+      <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+      <div id="scanMessage" class="scan-message"></div>
+    </div>
+    <div class="modal-buttons">
+      <button id="cancelScan" class="btn-secondary" data-i18n="close_btn">Đóng</button>
+      <button id="startScan" class="btn-primary" data-i18n="start_scan_btn">Bắt đầu quét</button>
+    </div>
+  </div>
+</div>
+
+<!-- Folder Browser Modal -->
+<div id="folderBrowserModal" class="modal-overlay" style="display:none">
+  <div class="modal modal-wide">
+    <h2 data-i18n="browse_title">Chọn thư mục</h2>
+    <div class="browser-path-row">
+      <button id="browserUpBtn" class="btn-icon" title="Lên thư mục cha">↑</button>
+      <button id="browserHomeBtn" class="btn-icon" title="Về gốc">⌂</button>
+      <input id="browserCurrentPath" type="text" readonly />
+    </div>
+    <div id="browserList" class="browser-list"></div>
+    <div class="modal-buttons">
+      <button id="cancelBrowse" class="btn-secondary" data-i18n="cancel_btn">Huỷ</button>
+      <button id="chooseFolderBtn" class="btn-primary" data-i18n="choose_folder_btn">Chọn thư mục này</button>
+    </div>
+  </div>
+</div>
+
+<!-- Merge Picker Modal -->
+<div id="mergeModal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <h2 data-i18n="merge_modal_title">Gộp vào người nào?</h2>
+    <p class="modal-sub" data-i18n="merge_modal_sub">Chọn người mà bạn muốn gộp vào (mọi ảnh sẽ được chuyển sang người đó).</p>
+    <div id="mergeList" class="merge-list"></div>
+    <div class="modal-buttons">
+      <button id="cancelMerge" class="btn-secondary" data-i18n="cancel_btn">Huỷ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Feedback Loop Modal -->
+<div id="feedbackModal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-header-row">
+      <h2 data-i18n="feedback_title">Đây có phải cùng một người không?</h2>
+      <button id="feedbackClose" class="lightbox-close-small" data-i18n-title="close_btn" title="Đóng">×</button>
+    </div>
+    <p id="feedbackSub" class="modal-sub"></p>
+    <div id="feedbackContent" class="feedback-compare">
+      <div class="feedback-side">
+        <img id="feedbackImgA" class="feedback-avatar" />
+        <div id="feedbackNameA" class="feedback-name"></div>
+      </div>
+      <div class="feedback-vs">?</div>
+      <div class="feedback-side">
+        <img id="feedbackImgB" class="feedback-avatar" />
+        <div id="feedbackNameB" class="feedback-name"></div>
+      </div>
+    </div>
+    <div id="feedbackDone" class="empty-state" style="display:none">
+      <p data-i18n="feedback_done">Đã kiểm tra hết! Không còn cặp nào cần xác nhận.</p>
+    </div>
+    <div class="modal-buttons feedback-buttons">
+      <button id="feedbackNo" class="btn-secondary" data-i18n="feedback_no">Không phải</button>
+      <button id="feedbackYes" class="btn-primary" data-i18n="feedback_yes">Đúng, gộp lại</button>
+    </div>
+  </div>
+</div>
+
+<!-- Organize Modal -->
+<div id="organizeModal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <h2 data-i18n="organize_title">Tạo thư mục theo tên</h2>
+    <p class="modal-sub" data-i18n="organize_sub">Ảnh của mỗi người đã đặt tên sẽ được sắp xếp vào thư mục "Organized/&lt;Tên&gt;" ngay trong thư mục gốc đã quét, giữ nguyên cấu trúc thư mục con. Ảnh có nhiều người sẽ chỉ vào thư mục của người có khuôn mặt lớn nhất.</p>
+    <div id="organizeSummary" class="organize-summary"></div>
+    <div class="organize-mode-row">
+      <label class="radio-row">
+        <input type="radio" name="organizeMode" value="copy" checked>
+        <span data-i18n="mode_copy">Copy (giữ ảnh gốc, an toàn)</span>
+      </label>
+      <label class="radio-row">
+        <input type="radio" name="organizeMode" value="move">
+        <span data-i18n="mode_move">Move (cắt hẳn ảnh gốc)</span>
+      </label>
+    </div>
+    <p id="organizeConfirmText" class="confirm-text" data-i18n="organize_confirm">Bạn có chắc chắn muốn thực hiện thao tác này không?</p>
+    <div id="organizeResult" class="organize-result" style="display:none"></div>
+    <div class="modal-buttons">
+      <button id="cancelOrganize" class="btn-secondary" data-i18n="cancel_btn">Huỷ</button>
+      <button id="confirmOrganize" class="btn-primary" data-i18n="organize_confirm_btn">Thực hiện</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div id="settingsModal" class="modal-overlay" style="display:none">
+  <div class="modal modal-wide">
+    <h2 data-i18n="settings_title">Cài đặt gom nhóm khuôn mặt</h2>
+    <p class="modal-sub" data-i18n="settings_sub">Chỉnh các ngưỡng dùng để gom nhóm khuôn mặt theo người. Thay đổi có hiệu lực ngay từ lần quét/gộp tiếp theo, không ảnh hưởng tới dữ liệu đã có cho tới khi bạn quét lại hoặc bấm "Gộp lại".</p>
+
+    <div class="setting-row">
+      <div class="setting-label">
+        <span data-i18n="setting_sim_threshold">Ngưỡng khớp người đã biết</span>
+        <span id="simThresholdValue" class="setting-value">0.42</span>
+      </div>
+      <input type="range" id="simThresholdInput" min="0.05" max="0.95" step="0.01" />
+      <p class="setting-desc" data-i18n="setting_sim_threshold_desc">Càng cao càng "khó tính" (ít nhận nhầm 2 người khác nhau là 1 người, nhưng dễ tách 1 người thành nhiều nhóm).</p>
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-label">
+        <span data-i18n="setting_dbscan_eps">Ngưỡng tự tạo nhóm mới (DBSCAN)</span>
+        <span id="dbscanEpsValue" class="setting-value">0.40</span>
+      </div>
+      <input type="range" id="dbscanEpsInput" min="0.05" max="0.95" step="0.01" />
+      <p class="setting-desc" data-i18n="setting_dbscan_eps_desc">Áp dụng cho các khuôn mặt "lạ" (không khớp ai) khi tự gom thành người mới lúc quét.</p>
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-label">
+        <span data-i18n="setting_min_samples">Số mặt tối thiểu để tự tạo nhóm</span>
+        <span id="minSamplesValue" class="setting-value">2</span>
+      </div>
+      <input type="range" id="minSamplesInput" min="1" max="10" step="1" />
+      <p class="setting-desc" data-i18n="setting_min_samples_desc">Nếu chỉ có 1 mặt lạ duy nhất, mặt đó luôn thành người riêng dù đặt số này bao nhiêu.</p>
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-label">
+        <span data-i18n="setting_feedback_min_sim">Ngưỡng gợi ý Feedback Loop</span>
+        <span id="feedbackMinSimValue" class="setting-value">0.20</span>
+      </div>
+      <input type="range" id="feedbackMinSimInput" min="0.05" max="0.95" step="0.01" />
+      <p class="setting-desc" data-i18n="setting_feedback_min_sim_desc">Càng thấp càng gợi ý nhiều cặp hơn (kể cả những cặp chỉ hơi giống nhau).</p>
+    </div>
+
+    <div class="modal-buttons">
+      <button id="resetSettings" class="btn-secondary" data-i18n="settings_reset">Khôi phục mặc định</button>
+      <button id="cancelSettings" class="btn-secondary" data-i18n="close_btn">Đóng</button>
+      <button id="saveSettings" class="btn-primary" data-i18n="settings_save">Lưu thay đổi</button>
+    </div>
+  </div>
+</div>
+
+<!-- Recluster Confirm Modal -->
+<div id="reclusterModal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <h2 data-i18n="recluster_title">Gộp lại theo thông số hiện tại?</h2>
+    <p class="modal-sub" data-i18n="recluster_sub">App sẽ tự gộp các nhóm người có độ giống nhau cao (theo ngưỡng "khớp người đã biết" trong Cài đặt). Nếu 2 người ĐỀU đã được đặt tên, app sẽ KHÔNG tự gộp để tránh ảnh hưởng nhóm bạn đã xác nhận — những trường hợp đó vẫn cần xác nhận tay qua "Kiểm tra lại nhóm".</p>
+    <div id="reclusterResult" class="organize-result" style="display:none"></div>
+    <div class="modal-buttons">
+      <button id="cancelRecluster" class="btn-secondary" data-i18n="cancel_btn">Huỷ</button>
+      <button id="confirmRecluster" class="btn-primary" data-i18n="recluster_confirm_btn">Bắt đầu gộp</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox" class="lightbox-overlay" style="display:none">
+  <button id="lightboxClose" class="lightbox-close">×</button>
+  <img id="lightboxImg" class="lightbox-img" />
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
