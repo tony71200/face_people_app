@@ -225,6 +225,15 @@ def api_list_persons():
         conn.close()
 
 
+@app.get("/api/persons/stats")
+def api_person_stats():
+    conn = db.get_conn()
+    try:
+        return db.get_person_stats(conn)
+    finally:
+        conn.close()
+
+
 @app.get("/api/persons/{person_id}/photos")
 def api_person_photos(person_id: int):
     conn = db.get_conn()

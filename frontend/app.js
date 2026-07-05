@@ -13,6 +13,7 @@ const translations = {
     scan_button: "+ Quét thư mục",
     all_photos: "Tất cả ảnh",
     people_title: "Con người",
+    people_stats: (total, named, unnamed) => `Tổng: ${total} · Đã đặt tên: ${named} · Chưa đặt tên: ${unnamed}`,
     empty_photos: "Chưa có ảnh nào.",
     empty_photos_sub: 'Nhấn "Quét thư mục" ở góc trái để bắt đầu.',
     empty_people: "Chưa nhận diện được ai.",
@@ -105,6 +106,7 @@ const translations = {
     scan_button: "+ Scan folder",
     all_photos: "All Photos",
     people_title: "People",
+    people_stats: (total, named, unnamed) => `Total: ${total} · Named: ${named} · Unnamed: ${unnamed}`,
     empty_photos: "No photos yet.",
     empty_photos_sub: 'Click "Scan folder" on the left to get started.',
     empty_people: "No one recognized yet.",
@@ -210,6 +212,8 @@ function applyLanguage() {
   document.getElementById("langToggle").checked = currentLang === "en";
   if (currentView === "photos") document.getElementById("viewTitle").textContent = t("all_photos");
   else document.getElementById("viewTitle").textContent = t("people_title");
+  if (currentView === "people") loadPeopleStats();
+  else hidePeopleStats();
 }
 
 document.getElementById("langToggle").addEventListener("change", (e) => {
@@ -268,6 +272,29 @@ function escapeHtml(str) {
   return d.innerHTML;
 }
 
+function hidePeopleStats() {
+  const stats = document.getElementById("peopleStats");
+  stats.style.display = "none";
+  stats.textContent = "";
+}
+
+async function loadPeopleStats() {
+  if (currentView !== "people") {
+    hidePeopleStats();
+    return;
+  }
+
+  const stats = document.getElementById("peopleStats");
+  const data = await safeRun(() => apiGet("/persons/stats"), t("error_load_people"));
+  if (!data || currentView !== "people") {
+    hidePeopleStats();
+    return;
+  }
+
+  stats.textContent = t("people_stats", data.total, data.named, data.unnamed);
+  stats.style.display = "inline";
+}
+
 // ---------------- Navigation ----------------
 document.querySelectorAll(".nav-item[data-view]").forEach((btn) => {
   btn.addEventListener("click", () => showView(btn.dataset.view));
@@ -284,14 +311,17 @@ function showView(view, forceReload) {
   if (view === "photos") {
     document.getElementById("view-photos").classList.add("active");
     document.getElementById("viewTitle").textContent = t("all_photos");
+    hidePeopleStats();
     if (changed) loadPhotos();
   } else if (view === "people") {
     document.getElementById("view-people").classList.add("active");
     document.getElementById("viewTitle").textContent = t("people_title");
+    loadPeopleStats();
     if (changed) loadPeople();
   } else if (view === "person-detail") {
     document.getElementById("view-person-detail").classList.add("active");
     document.getElementById("viewTitle").textContent = t("people_title");
+    hidePeopleStats();
   }
 }
 
@@ -331,6 +361,7 @@ document.getElementById("lightbox").addEventListener("click", (e) => {
 
 // ---------------- People view ----------------
 async function loadPeople() {
+  loadPeopleStats();
   await safeRun(async () => {
     const grid = document.getElementById("peopleGrid");
     const empty = document.getElementById("peopleEmpty");
@@ -388,6 +419,7 @@ document.getElementById("personNameInput").addEventListener("input", (e) => {
   nameSaveTimer = setTimeout(async () => {
     try {
       await apiJson("PUT", `/persons/${personId}`, { name: value });
+      loadPeopleStats();
     } catch (error) {
       showError(t("error_save_name"), error);
     }
@@ -400,7 +432,10 @@ document.getElementById("deletePersonBtn").addEventListener("click", async () =>
     () => apiJson("DELETE", `/persons/${currentPersonId}`),
     t("error_delete_person")
   );
-  if (deleted !== null) showView("people");
+  if (deleted !== null) {
+    showView("people");
+    loadPeopleStats();
+  }
 });
 
 // ---------------- Merge ----------------
@@ -424,6 +459,7 @@ document.getElementById("mergeBtn").addEventListener("click", async () => {
         );
         if (merged === null) return;
         document.getElementById("mergeModal").style.display = "none";
+        loadPeopleStats();
         openPersonDetail(p.id);
       });
       list.appendChild(item);
@@ -502,6 +538,7 @@ function pollScanStatus() {
         setTimeout(() => {
           scanModal.style.display = "none";
           showView(currentView, true);
+          loadPeopleStats();
         }, 800);
       }
     }
@@ -612,7 +649,10 @@ document.getElementById("feedbackYes").addEventListener("click", async () => {
     }),
     t("error_feedback")
   );
-  if (saved !== null) loadNextFeedback();
+  if (saved !== null) {
+    loadPeopleStats();
+    loadNextFeedback();
+  }
 });
 document.getElementById("feedbackNo").addEventListener("click", async () => {
   if (!feedbackCurrent) return;
@@ -768,6 +808,7 @@ document.getElementById("confirmRecluster").addEventListener("click", async () =
   try {
     const result = await apiJson("POST", "/recluster", {});
     resultBox.textContent = t("recluster_result", result.merged_count, result.skipped_named_conflicts);
+    loadPeopleStats();
     if (currentView === "people") loadPeople();
   } catch (e) {
     resultBox.classList.add("has-errors");

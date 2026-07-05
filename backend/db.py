@@ -239,6 +239,27 @@ def list_persons(conn):
     return rows
 
 
+def get_person_stats(conn):
+    """Return person counts compatible with list_persons (only people with faces)."""
+    row = conn.execute(
+        """
+        SELECT
+            COUNT(*) AS total,
+            COALESCE(SUM(CASE WHEN name IS NOT NULL AND TRIM(name) != '' THEN 1 ELSE 0 END), 0) AS named
+        FROM (
+            SELECT p.id, p.name, COUNT(f.id) AS face_count
+            FROM persons p
+            LEFT JOIN faces f ON f.person_id = p.id
+            GROUP BY p.id
+            HAVING face_count > 0
+        )
+        """
+    ).fetchone()
+    total = row["total"]
+    named = row["named"]
+    return {"total": total, "named": named, "unnamed": total - named}
+
+
 def list_named_persons(conn):
     return conn.execute(
         "SELECT * FROM persons WHERE name IS NOT NULL AND TRIM(name) != ''"
