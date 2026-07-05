@@ -342,7 +342,7 @@ async function loadPeople() {
       const avatar = el("img", "person-avatar");
       avatar.src = `${API}/faces/${p.representative_face_id}/thumb`;
       const name = el("div", "person-card-name", p.name ? escapeHtml(p.name) : t("unnamed"));
-      const count = el("div", "person-card-count", `${p.face_count} ${t("photos_suffix")}`);
+      const count = el("div", "person-card-count", `${p.photo_count} ${t("photos_suffix")}`);
       card.appendChild(avatar);
       card.appendChild(name);
       card.appendChild(count);
@@ -363,7 +363,7 @@ async function openPersonDetail(personId) {
 
     document.getElementById("personHeaderThumb").src = `${API}/faces/${person.representative_face_id}/thumb`;
     document.getElementById("personNameInput").value = person.name || "";
-    document.getElementById("personCount").textContent = `${person.face_count} ${t("photos_suffix")}`;
+    document.getElementById("personCount").textContent = `${person.photo_count} ${t("photos_suffix")}`;
 
     const photos = await apiGet(`/persons/${personId}/photos`);
     const grid = document.getElementById("personPhotosGrid");
@@ -384,11 +384,13 @@ let nameSaveTimer = null;
 document.getElementById("personNameInput").addEventListener("input", (e) => {
   clearTimeout(nameSaveTimer);
   const value = e.target.value;
+  const personId = currentPersonId;
   nameSaveTimer = setTimeout(async () => {
-    await safeRun(
-      () => apiJson("PUT", `/persons/${currentPersonId}`, { name: value }),
-      t("error_save_name")
-    );
+    try {
+      await apiJson("PUT", `/persons/${personId}`, { name: value });
+    } catch (error) {
+      showError(t("error_save_name"), error);
+    }
   }, 500);
 });
 

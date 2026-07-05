@@ -216,6 +216,7 @@ def api_list_persons():
                 "id": p["id"],
                 "name": p["name"],
                 "face_count": p["face_count"],
+                "photo_count": p["photo_count"],
                 "representative_face_id": p["representative_face_id"],
             }
             for p in persons

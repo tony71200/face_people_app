@@ -228,12 +228,12 @@ def get_person(conn, person_id):
 def list_persons(conn):
     rows = conn.execute(
         """
-        SELECT p.*, COUNT(f.id) as face_count
+        SELECT p.*, COUNT(f.id) AS face_count, COUNT(DISTINCT f.image_id) AS photo_count
         FROM persons p
         LEFT JOIN faces f ON f.person_id = p.id
         GROUP BY p.id
         HAVING face_count > 0
-        ORDER BY face_count DESC
+        ORDER BY photo_count DESC, face_count DESC
         """
     ).fetchall()
     return rows
