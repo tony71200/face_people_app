@@ -52,11 +52,10 @@ class FaceEngine:
         return results
 
 
-_engine = None
+_engines = {}
 
 
 def get_engine(prefer_gpu: bool = True) -> FaceEngine:
-    global _engine
-    if _engine is None:
-        _engine = FaceEngine(prefer_gpu=prefer_gpu)
-    return _engine
+    if prefer_gpu not in _engines:
+        _engines[prefer_gpu] = FaceEngine(prefer_gpu=prefer_gpu)
+    return _engines[prefer_gpu]

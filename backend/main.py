@@ -56,13 +56,6 @@ class ScanRequest(BaseModel):
 def _do_scan(folder: str, recursive: bool, use_gpu: bool):
     conn = db.get_conn()
     try:
-        with SCAN_LOCK:
-            SCAN_STATE.update(
-                status="scanning", processed=0, total=0,
-                message="Đang tìm ảnh...", gpu_active=None,
-                failed=0, errors=[],
-            )
-
         scan_root = str(Path(folder).resolve())
         paths = utils.list_images(folder, recursive=recursive)
         total = len(paths)
@@ -147,6 +140,11 @@ def start_scan(req: ScanRequest):
     with SCAN_LOCK:
         if SCAN_STATE["status"] in ("scanning", "clustering"):
             raise HTTPException(400, "Đang có một tiến trình quét khác chạy.")
+        SCAN_STATE.update(
+            status="scanning", processed=0, total=0,
+            message="Đang tìm ảnh...", gpu_active=None,
+            failed=0, errors=[],
+        )
     t = threading.Thread(target=_do_scan, args=(req.folder, req.recursive, req.use_gpu), daemon=True)
     t.start()
     return {"started": True}
