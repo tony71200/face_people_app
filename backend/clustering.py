@@ -112,7 +112,7 @@ def run_incremental_clustering(conn, progress_cb=None):
                 best_sim, best_pid = sim, pid
 
         if best_pid is not None and best_sim >= sim_threshold:
-            db.set_face_person(conn, face["id"], best_pid)
+            db.set_face_person(conn, face["id"], best_pid, commit=False)
             assigned_existing += 1
             centroids[best_pid] = (centroids[best_pid] + vec)
             centroids[best_pid] /= np.linalg.norm(centroids[best_pid])
@@ -131,15 +131,21 @@ def run_incremental_clustering(conn, progress_cb=None):
         label_to_person = {}
         for face, label in zip(unmatched, labels):
             if label == -1:
-                pid = db.create_person(conn)
-                db.set_face_person(conn, face["id"], pid)
+                pid = db.create_person(conn, commit=False)
+                db.set_face_person(conn, face["id"], pid, commit=False)
                 new_persons += 1
             else:
                 if label not in label_to_person:
-                    pid = db.create_person(conn)
+                    pid = db.create_person(conn, commit=False)
                     label_to_person[label] = pid
                     new_persons += 1
-                db.set_face_person(conn, face["id"], label_to_person[label])
+                db.set_face_person(conn, face["id"], label_to_person[label], commit=False)
+
+    try:
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
     _refresh_representatives(conn)
     db.cleanup_empty_persons(conn)
@@ -170,7 +176,7 @@ def merge_persons(conn, source_id, target_id):
 
 def split_face_to_new_person(conn, face_id):
     """Tách 1 khuôn mặt bị gán sai ra thành 1 person mới (hoặc unknown)."""
-    new_pid = db.create_person(conn)
+    new_pid = db.create_person(conn, commit=False)
     db.set_face_person(conn, face_id, new_pid)
     _refresh_representatives(conn)
     db.cleanup_empty_persons(conn)
@@ -211,7 +217,7 @@ def find_next_merge_suggestion(conn):
     return best
 
 
-def auto_merge_confident_pairs(conn, progress_cb=None):
+def auto_merge_confident_pairs(conn, progress_cb=None, should_cancel=None):
     """
     "Reclustering": tự động gộp các cặp person có độ giống >= sim_threshold
     hiện tại (đọc từ settings, sau khi bạn chỉnh trong UI).
@@ -219,7 +225,18 @@ def auto_merge_confident_pairs(conn, progress_cb=None):
     AN TOÀN: nếu CẢ HAI person trong 1 cặp đều đã được đặt tên, sẽ KHÔNG tự
     gộp (để không phá nhóm bạn đã xác nhận tên trước đó) — trường hợp này
     vẫn phải xác nhận tay qua Feedback Loop hoặc nút "Gộp" thủ công.
+
+    progress_cb(event, message, **payload) optional để báo tiến độ.
+    should_cancel() optional để dừng mềm ở checkpoint an toàn giữa các vòng lặp.
     """
+
+    def _progress(event, message, **payload):
+        if progress_cb:
+            progress_cb(event, message, **payload)
+
+    def _cancel_requested():
+        return bool(should_cancel and should_cancel())
+
     settings = get_settings(conn)
     threshold = settings["sim_threshold"]
 
@@ -227,51 +244,111 @@ def auto_merge_confident_pairs(conn, progress_cb=None):
     skipped_named_conflicts = 0
     session_skip = set()  # các cặp (named vs named) bỏ qua CHỈ trong lần chạy này
 
-    while True:
-        persons = db.list_persons(conn)
-        if len(persons) < 2:
-            break
+    try:
+        while True:
+            if _cancel_requested():
+                _progress(
+                    "cancelled",
+                    "Đã nhận yêu cầu huỷ recluster; dừng ở checkpoint an toàn.",
+                    merged_count=merged_count,
+                    skipped_named_conflicts=skipped_named_conflicts,
+                )
+                return {
+                    "merged_count": merged_count,
+                    "skipped_named_conflicts": skipped_named_conflicts,
+                    "cancelled": True,
+                }
 
-        centroids = {p["id"]: _person_centroid(conn, p["id"]) for p in persons}
+            _progress(
+                "computing_centroids",
+                "Đang tính danh sách persons và centroids...",
+                merged_count=merged_count,
+                skipped_named_conflicts=skipped_named_conflicts,
+            )
+            persons = db.list_persons(conn)
+            if len(persons) < 2:
+                break
 
-        best = None
-        for i in range(len(persons)):
-            for j in range(i + 1, len(persons)):
-                pa, pb = persons[i], persons[j]
-                pair_key = frozenset((pa["id"], pb["id"]))
-                if pair_key in session_skip:
-                    continue
-                if db.is_pair_rejected(conn, pa["id"], pb["id"]):
-                    continue
-                sim = float(np.dot(centroids[pa["id"]], centroids[pb["id"]]))
-                if sim < threshold:
-                    continue
-                if best is None or sim > best["similarity"]:
-                    best = {"pa": pa, "pb": pb, "similarity": sim}
+            centroids = {p["id"]: _person_centroid(conn, p["id"]) for p in persons}
 
-        if best is None:
-            break
+            best = None
+            for i in range(len(persons)):
+                for j in range(i + 1, len(persons)):
+                    pa, pb = persons[i], persons[j]
+                    pair_key = frozenset((pa["id"], pb["id"]))
+                    if pair_key in session_skip:
+                        continue
+                    if db.is_pair_rejected(conn, pa["id"], pb["id"]):
+                        continue
+                    sim = float(np.dot(centroids[pa["id"]], centroids[pb["id"]]))
+                    if sim < threshold:
+                        continue
+                    if best is None or sim > best["similarity"]:
+                        best = {"pa": pa, "pb": pb, "similarity": sim}
 
-        pa, pb = best["pa"], best["pb"]
-        both_named = bool(pa["name"]) and bool(pb["name"])
-        if both_named:
-            # Không tự gộp 2 người đã có tên khác nhau -> chỉ bỏ qua trong
-            # phiên chạy này (KHÔNG lưu vĩnh viễn), Feedback Loop vẫn có thể
-            # hỏi lại cặp này sau nếu bạn muốn xác nhận tay.
-            session_skip.add(frozenset((pa["id"], pb["id"])))
-            skipped_named_conflicts += 1
-            continue
+            if best is None:
+                break
 
-        if pb["name"] and not pa["name"]:
-            target, source = pb, pa
-        else:
-            target, source = pa, pb
+            pa, pb = best["pa"], best["pb"]
+            _progress(
+                "best_pair_found",
+                f"Tìm thấy cặp tốt nhất: person {pa['id']} và {pb['id']} (similarity {best['similarity']:.4f}).",
+                person_a_id=pa["id"],
+                person_b_id=pb["id"],
+                similarity=best["similarity"],
+                merged_count=merged_count,
+                skipped_named_conflicts=skipped_named_conflicts,
+            )
 
-        merge_persons(conn, source["id"], target["id"])
-        db.clear_rejected_pairs_for(conn, source["id"])
-        merged_count += 1
+            both_named = bool(pa["name"]) and bool(pb["name"])
+            if both_named:
+                # Không tự gộp 2 người đã có tên khác nhau -> chỉ bỏ qua trong
+                # phiên chạy này (KHÔNG lưu vĩnh viễn), Feedback Loop vẫn có thể
+                # hỏi lại cặp này sau nếu bạn muốn xác nhận tay.
+                session_skip.add(frozenset((pa["id"], pb["id"])))
+                skipped_named_conflicts += 1
+                _progress(
+                    "named_conflict_skipped",
+                    f"Bỏ qua xung đột tên giữa person {pa['id']} và {pb['id']}.",
+                    person_a_id=pa["id"],
+                    person_b_id=pb["id"],
+                    similarity=best["similarity"],
+                    merged_count=merged_count,
+                    skipped_named_conflicts=skipped_named_conflicts,
+                )
+                continue
 
-        if progress_cb:
-            progress_cb(merged_count, best["similarity"])
+            if pb["name"] and not pa["name"]:
+                target, source = pb, pa
+            else:
+                target, source = pa, pb
 
-    return {"merged_count": merged_count, "skipped_named_conflicts": skipped_named_conflicts}
+            merge_persons(conn, source["id"], target["id"])
+            db.clear_rejected_pairs_for(conn, source["id"])
+            merged_count += 1
+
+            _progress(
+                "pair_merged",
+                f"Đã gộp person {source['id']} vào person {target['id']} (similarity {best['similarity']:.4f}).",
+                source_id=source["id"],
+                target_id=target["id"],
+                similarity=best["similarity"],
+                merged_count=merged_count,
+                skipped_named_conflicts=skipped_named_conflicts,
+            )
+
+        _progress(
+            "completed",
+            f"Hoàn tất recluster: đã gộp {merged_count} cặp, bỏ qua {skipped_named_conflicts} xung đột tên.",
+            merged_count=merged_count,
+            skipped_named_conflicts=skipped_named_conflicts,
+        )
+        return {"merged_count": merged_count, "skipped_named_conflicts": skipped_named_conflicts}
+    except Exception as e:
+        _progress(
+            "error",
+            f"Lỗi recluster: {e}",
+            merged_count=merged_count,
+            skipped_named_conflicts=skipped_named_conflicts,
+        )
+        raise
