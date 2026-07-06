@@ -68,8 +68,11 @@ def _now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
-def _append_recluster_log(message: str):
-    RECLUSTER_STATE["logs"].append({"at": _now_iso(), "message": message})
+def _recluster_log(message: str):
+    safe_message = str(message).replace("\n", " ").strip()
+    if len(safe_message) > 500:
+        safe_message = safe_message[:497] + "..."
+    RECLUSTER_STATE["logs"].append({"at": _now_iso(), "message": safe_message})
     RECLUSTER_STATE["logs"] = RECLUSTER_STATE["logs"][-100:]
 
 
@@ -110,8 +113,7 @@ def _do_scan(folder: str, recursive: bool, use_gpu: bool):
 
                 if changed:
                     faces = engine.detect_and_embed(bgr)
-                    for f in faces:
-                        db.add_face(conn, image_id, f["bbox"], f["det_score"], f["embedding"])
+                    db.add_faces_batch(conn, image_id, faces)
 
                     thumb_path = THUMBS_DIR / f"img_{image_id}.jpg"
                     if not thumb_path.exists() or changed:
@@ -419,7 +421,7 @@ def _do_recluster():
                 RECLUSTER_STATE["merged_count"] = payload["merged_count"]
             if "skipped_named_conflicts" in payload:
                 RECLUSTER_STATE["skipped_named_conflicts"] = payload["skipped_named_conflicts"]
-            _append_recluster_log(message)
+            _recluster_log(message)
 
     def _should_cancel():
         with RECLUSTER_LOCK:
@@ -427,7 +429,7 @@ def _do_recluster():
             if requested and RECLUSTER_STATE["status"] == "running":
                 RECLUSTER_STATE["status"] = "cancelling"
                 RECLUSTER_STATE["message"] = "Đang dừng recluster ở checkpoint an toàn..."
-                _append_recluster_log(RECLUSTER_STATE["message"])
+                _recluster_log(RECLUSTER_STATE["message"])
             return requested
 
     try:
@@ -447,11 +449,11 @@ def _do_recluster():
                     f"Hoàn tất recluster: đã gộp {result['merged_count']} cặp, "
                     f"bỏ qua {result['skipped_named_conflicts']} xung đột tên."
                 )
-            _append_recluster_log(RECLUSTER_STATE["message"])
+            _recluster_log(RECLUSTER_STATE["message"])
     except Exception as e:
         with RECLUSTER_LOCK:
             RECLUSTER_STATE.update(status="error", message=str(e), finished_at=_now_iso())
-            _append_recluster_log(f"Lỗi recluster: {e}")
+            _recluster_log(f"Lỗi recluster: {e}")
         print(f"[recluster] Lỗi: {e}")
     finally:
         conn.close()
@@ -472,7 +474,7 @@ def api_recluster_start():
             started_at=_now_iso(),
             finished_at=None,
         )
-        _append_recluster_log(RECLUSTER_STATE["message"])
+        _recluster_log(RECLUSTER_STATE["message"])
     t = threading.Thread(target=_do_recluster, daemon=True)
     t.start()
     return {"started": True}
@@ -494,7 +496,7 @@ def api_recluster_cancel():
             if RECLUSTER_STATE["status"] == "running":
                 RECLUSTER_STATE["status"] = "cancelling"
             RECLUSTER_STATE["message"] = "Đã yêu cầu huỷ recluster; sẽ dừng ở checkpoint an toàn."
-            _append_recluster_log(RECLUSTER_STATE["message"])
+            _recluster_log(RECLUSTER_STATE["message"])
         return dict(RECLUSTER_STATE)
 
 

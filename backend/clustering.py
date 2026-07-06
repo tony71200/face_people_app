@@ -112,7 +112,7 @@ def run_incremental_clustering(conn, progress_cb=None):
                 best_sim, best_pid = sim, pid
 
         if best_pid is not None and best_sim >= sim_threshold:
-            db.set_face_person(conn, face["id"], best_pid)
+            db.set_face_person(conn, face["id"], best_pid, commit=False)
             assigned_existing += 1
             centroids[best_pid] = (centroids[best_pid] + vec)
             centroids[best_pid] /= np.linalg.norm(centroids[best_pid])
@@ -131,15 +131,21 @@ def run_incremental_clustering(conn, progress_cb=None):
         label_to_person = {}
         for face, label in zip(unmatched, labels):
             if label == -1:
-                pid = db.create_person(conn)
-                db.set_face_person(conn, face["id"], pid)
+                pid = db.create_person(conn, commit=False)
+                db.set_face_person(conn, face["id"], pid, commit=False)
                 new_persons += 1
             else:
                 if label not in label_to_person:
-                    pid = db.create_person(conn)
+                    pid = db.create_person(conn, commit=False)
                     label_to_person[label] = pid
                     new_persons += 1
-                db.set_face_person(conn, face["id"], label_to_person[label])
+                db.set_face_person(conn, face["id"], label_to_person[label], commit=False)
+
+    try:
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
     _refresh_representatives(conn)
     db.cleanup_empty_persons(conn)
@@ -170,7 +176,7 @@ def merge_persons(conn, source_id, target_id):
 
 def split_face_to_new_person(conn, face_id):
     """Tách 1 khuôn mặt bị gán sai ra thành 1 person mới (hoặc unknown)."""
-    new_pid = db.create_person(conn)
+    new_pid = db.create_person(conn, commit=False)
     db.set_face_person(conn, face_id, new_pid)
     _refresh_representatives(conn)
     db.cleanup_empty_persons(conn)
