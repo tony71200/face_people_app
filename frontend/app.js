@@ -13,6 +13,7 @@ const translations = {
     scan_button: "+ Quét thư mục",
     all_photos: "Tất cả ảnh",
     people_title: "Con người",
+    people_stats: (total, named, unnamed) => `Tổng: ${total} · Đã đặt tên: ${named} · Chưa đặt tên: ${unnamed}`,
     empty_photos: "Chưa có ảnh nào.",
     empty_photos_sub: 'Nhấn "Quét thư mục" ở góc trái để bắt đầu.',
     empty_people: "Chưa nhận diện được ai.",
@@ -74,9 +75,26 @@ const translations = {
     recluster_title: "Gộp lại theo thông số hiện tại?",
     recluster_sub: 'App sẽ tự gộp các nhóm người có độ giống nhau cao (theo ngưỡng "khớp người đã biết" trong Cài đặt). Nếu 2 người ĐỀU đã được đặt tên, app sẽ KHÔNG tự gộp để tránh ảnh hưởng nhóm bạn đã xác nhận — những trường hợp đó vẫn cần xác nhận tay qua "Kiểm tra lại nhóm".',
     recluster_confirm_btn: "Bắt đầu gộp",
+    recluster_stop_btn: "Yêu cầu dừng",
     recluster_running: "Đang gộp...",
     recluster_result: (merged, skipped) => `Đã gộp ${merged} cặp người. Bỏ qua ${skipped} cặp vì cả 2 đều đã có tên khác nhau (cần xác nhận tay).`,
     scan_errors_count: (n) => `${n} ảnh lỗi`,
+    error_generic: "Đã xảy ra lỗi. Vui lòng thử lại.",
+    error_load_photos: "Không tải được danh sách ảnh.",
+    error_load_people: "Không tải được danh sách người.",
+    error_person_detail: "Không tải được chi tiết người này.",
+    error_save_name: "Không lưu được tên người.",
+    error_delete_person: "Không xoá được người này.",
+    error_merge_people: "Không gộp được người.",
+    error_feedback: "Không gửi được phản hồi.",
+    error_organize_preview: "Không tải được bản xem trước tổ chức ảnh.",
+    error_organize_execute: "Không tổ chức ảnh được.",
+    error_settings_load: "Không tải được cài đặt.",
+    error_settings_save: "Không lưu được cài đặt.",
+    error_settings_reset: "Không khôi phục được cài đặt mặc định.",
+    error_recluster: "Không gộp lại được.",
+    error_scan_status: "Không cập nhật được trạng thái quét.",
+    error_browse_folder: "Không duyệt được thư mục này.",
   },
   en: {
     library: "Photo Library",
@@ -89,6 +107,7 @@ const translations = {
     scan_button: "+ Scan folder",
     all_photos: "All Photos",
     people_title: "People",
+    people_stats: (total, named, unnamed) => `Total: ${total} · Named: ${named} · Unnamed: ${unnamed}`,
     empty_photos: "No photos yet.",
     empty_photos_sub: 'Click "Scan folder" on the left to get started.',
     empty_people: "No one recognized yet.",
@@ -150,9 +169,26 @@ const translations = {
     recluster_title: "Recluster using current settings?",
     recluster_sub: 'The app will automatically merge groups of people with high similarity (based on the "known-person match" threshold in Settings). If BOTH people already have names, they will NOT be auto-merged to avoid disrupting groups you already confirmed — those still need manual confirmation via "Review groupings".',
     recluster_confirm_btn: "Start merging",
+    recluster_stop_btn: "Request stop",
     recluster_running: "Merging...",
     recluster_result: (merged, skipped) => `Merged ${merged} pairs. Skipped ${skipped} pairs because both already had different names (needs manual confirmation).`,
     scan_errors_count: (n) => `${n} failed image${n === 1 ? "" : "s"}`,
+    error_generic: "Something went wrong. Please try again.",
+    error_load_photos: "Could not load photos.",
+    error_load_people: "Could not load people.",
+    error_person_detail: "Could not load this person's details.",
+    error_save_name: "Could not save this person's name.",
+    error_delete_person: "Could not delete this person.",
+    error_merge_people: "Could not merge people.",
+    error_feedback: "Could not submit feedback.",
+    error_organize_preview: "Could not load the organize preview.",
+    error_organize_execute: "Could not organize photos.",
+    error_settings_load: "Could not load settings.",
+    error_settings_save: "Could not save settings.",
+    error_settings_reset: "Could not reset settings.",
+    error_recluster: "Could not recluster people.",
+    error_scan_status: "Could not update scan status.",
+    error_browse_folder: "Could not browse this folder.",
   },
 };
 
@@ -178,6 +214,8 @@ function applyLanguage() {
   document.getElementById("langToggle").checked = currentLang === "en";
   if (currentView === "photos") document.getElementById("viewTitle").textContent = t("all_photos");
   else document.getElementById("viewTitle").textContent = t("people_title");
+  if (currentView === "people") loadPeopleStats();
+  else hidePeopleStats();
 }
 
 document.getElementById("langToggle").addEventListener("change", (e) => {
@@ -208,6 +246,21 @@ async function apiJson(method, path, body) {
   return res.json();
 }
 
+function showError(message, error) {
+  const text = message || t("error_generic");
+  if (error) console.error(text, error);
+  alert(error && error.message ? `${text} ${error.message}` : text);
+}
+
+async function safeRun(asyncFn, fallbackMessage) {
+  try {
+    return await asyncFn();
+  } catch (error) {
+    showError(fallbackMessage, error);
+    return null;
+  }
+}
+
 function el(tag, className, html) {
   const e = document.createElement(tag);
   if (className) e.className = className;
@@ -219,6 +272,29 @@ function escapeHtml(str) {
   const d = document.createElement("div");
   d.textContent = str;
   return d.innerHTML;
+}
+
+function hidePeopleStats() {
+  const stats = document.getElementById("peopleStats");
+  stats.style.display = "none";
+  stats.textContent = "";
+}
+
+async function loadPeopleStats() {
+  if (currentView !== "people") {
+    hidePeopleStats();
+    return;
+  }
+
+  const stats = document.getElementById("peopleStats");
+  const data = await safeRun(() => apiGet("/persons/stats"), t("error_load_people"));
+  if (!data || currentView !== "people") {
+    hidePeopleStats();
+    return;
+  }
+
+  stats.textContent = t("people_stats", data.total, data.named, data.unnamed);
+  stats.style.display = "inline";
 }
 
 // ---------------- Navigation ----------------
@@ -237,14 +313,17 @@ function showView(view, forceReload) {
   if (view === "photos") {
     document.getElementById("view-photos").classList.add("active");
     document.getElementById("viewTitle").textContent = t("all_photos");
+    hidePeopleStats();
     if (changed) loadPhotos();
   } else if (view === "people") {
     document.getElementById("view-people").classList.add("active");
     document.getElementById("viewTitle").textContent = t("people_title");
+    loadPeopleStats();
     if (changed) loadPeople();
   } else if (view === "person-detail") {
     document.getElementById("view-person-detail").classList.add("active");
     document.getElementById("viewTitle").textContent = t("people_title");
+    hidePeopleStats();
   }
 }
 
@@ -252,21 +331,23 @@ document.getElementById("backToPeople").addEventListener("click", () => showView
 
 // ---------------- Photos view ----------------
 async function loadPhotos() {
-  const grid = document.getElementById("photosGrid");
-  const empty = document.getElementById("photosEmpty");
-  grid.innerHTML = "";
-  const images = await apiGet("/images");
-  empty.style.display = images.length === 0 ? "block" : "none";
-  for (const img of images) {
-    const tile = el("div", "photo-tile");
-    const im = el("img");
-    im.src = `${API}/images/${img.id}/thumb`;
-    im.loading = "lazy";
-    im.alt = img.filename;
-    tile.appendChild(im);
-    tile.addEventListener("click", () => openLightbox(img.id));
-    grid.appendChild(tile);
-  }
+  await safeRun(async () => {
+    const grid = document.getElementById("photosGrid");
+    const empty = document.getElementById("photosEmpty");
+    grid.innerHTML = "";
+    const images = await apiGet("/images");
+    empty.style.display = images.length === 0 ? "block" : "none";
+    for (const img of images) {
+      const tile = el("div", "photo-tile");
+      const im = el("img");
+      im.src = `${API}/images/${img.id}/thumb`;
+      im.loading = "lazy";
+      im.alt = img.filename;
+      tile.appendChild(im);
+      tile.addEventListener("click", () => openLightbox(img.id));
+      grid.appendChild(tile);
+    }
+  }, t("error_load_photos"));
 }
 
 function openLightbox(imageId) {
@@ -282,87 +363,111 @@ document.getElementById("lightbox").addEventListener("click", (e) => {
 
 // ---------------- People view ----------------
 async function loadPeople() {
-  const grid = document.getElementById("peopleGrid");
-  const empty = document.getElementById("peopleEmpty");
-  grid.innerHTML = "";
-  const persons = await apiGet("/persons");
-  empty.style.display = persons.length === 0 ? "block" : "none";
-  for (const p of persons) {
-    const card = el("div", "person-card");
-    const avatar = el("img", "person-avatar");
-    avatar.src = `${API}/faces/${p.representative_face_id}/thumb`;
-    const name = el("div", "person-card-name", p.name ? escapeHtml(p.name) : t("unnamed"));
-    const count = el("div", "person-card-count", `${p.face_count} ${t("photos_suffix")}`);
-    card.appendChild(avatar);
-    card.appendChild(name);
-    card.appendChild(count);
-    card.addEventListener("click", () => openPersonDetail(p.id));
-    grid.appendChild(card);
-  }
+  loadPeopleStats();
+  await safeRun(async () => {
+    const grid = document.getElementById("peopleGrid");
+    const empty = document.getElementById("peopleEmpty");
+    grid.innerHTML = "";
+    const persons = await apiGet("/persons");
+    empty.style.display = persons.length === 0 ? "block" : "none";
+    for (const p of persons) {
+      const card = el("div", "person-card");
+      const avatar = el("img", "person-avatar");
+      avatar.src = `${API}/faces/${p.representative_face_id}/thumb`;
+      const name = el("div", "person-card-name", p.name ? escapeHtml(p.name) : t("unnamed"));
+      const count = el("div", "person-card-count", `${p.photo_count} ${t("photos_suffix")}`);
+      card.appendChild(avatar);
+      card.appendChild(name);
+      card.appendChild(count);
+      card.addEventListener("click", () => openPersonDetail(p.id));
+      grid.appendChild(card);
+    }
+  }, t("error_load_people"));
 }
 
 async function openPersonDetail(personId) {
-  currentPersonId = personId;
-  showView("person-detail");
+  await safeRun(async () => {
+    currentPersonId = personId;
+    showView("person-detail");
 
-  const persons = await apiGet("/persons");
-  const person = persons.find((p) => p.id === personId);
-  if (!person) return;
+    const persons = await apiGet("/persons");
+    const person = persons.find((p) => p.id === personId);
+    if (!person) return;
 
-  document.getElementById("personHeaderThumb").src = `${API}/faces/${person.representative_face_id}/thumb`;
-  document.getElementById("personNameInput").value = person.name || "";
-  document.getElementById("personCount").textContent = `${person.face_count} ${t("photos_suffix")}`;
+    document.getElementById("personHeaderThumb").src = `${API}/faces/${person.representative_face_id}/thumb`;
+    document.getElementById("personNameInput").value = person.name || "";
+    document.getElementById("personCount").textContent = `${person.photo_count} ${t("photos_suffix")}`;
 
-  const photos = await apiGet(`/persons/${personId}/photos`);
-  const grid = document.getElementById("personPhotosGrid");
-  grid.innerHTML = "";
-  for (const img of photos) {
-    const tile = el("div", "photo-tile");
-    const im = el("img");
-    im.src = `${API}/images/${img.id}/thumb`;
-    im.loading = "lazy";
-    tile.appendChild(im);
-    tile.addEventListener("click", () => openLightbox(img.id));
-    grid.appendChild(tile);
-  }
+    const photos = await apiGet(`/persons/${personId}/photos`);
+    const grid = document.getElementById("personPhotosGrid");
+    grid.innerHTML = "";
+    for (const img of photos) {
+      const tile = el("div", "photo-tile");
+      const im = el("img");
+      im.src = `${API}/images/${img.id}/thumb`;
+      im.loading = "lazy";
+      tile.appendChild(im);
+      tile.addEventListener("click", () => openLightbox(img.id));
+      grid.appendChild(tile);
+    }
+  }, t("error_person_detail"));
 }
 
 let nameSaveTimer = null;
 document.getElementById("personNameInput").addEventListener("input", (e) => {
   clearTimeout(nameSaveTimer);
   const value = e.target.value;
+  const personId = currentPersonId;
   nameSaveTimer = setTimeout(async () => {
-    await apiJson("PUT", `/persons/${currentPersonId}`, { name: value });
+    try {
+      await apiJson("PUT", `/persons/${personId}`, { name: value });
+      loadPeopleStats();
+    } catch (error) {
+      showError(t("error_save_name"), error);
+    }
   }, 500);
 });
 
 document.getElementById("deletePersonBtn").addEventListener("click", async () => {
   if (!confirm(t("confirm_delete_person"))) return;
-  await fetch(`${API}/persons/${currentPersonId}`, { method: "DELETE" });
-  showView("people");
+  const deleted = await safeRun(
+    () => apiJson("DELETE", `/persons/${currentPersonId}`),
+    t("error_delete_person")
+  );
+  if (deleted !== null) {
+    showView("people");
+    loadPeopleStats();
+  }
 });
 
 // ---------------- Merge ----------------
 document.getElementById("mergeBtn").addEventListener("click", async () => {
-  const persons = await apiGet("/persons");
-  const list = document.getElementById("mergeList");
-  list.innerHTML = "";
-  for (const p of persons) {
-    if (p.id === currentPersonId) continue;
-    const item = el("div", "merge-list-item");
-    const img = el("img");
-    img.src = `${API}/faces/${p.representative_face_id}/thumb`;
-    const label = el("span", null, p.name ? escapeHtml(p.name) : t("unnamed_count", p.face_count));
-    item.appendChild(img);
-    item.appendChild(label);
-    item.addEventListener("click", async () => {
-      await apiJson("POST", "/persons/merge", { source_id: currentPersonId, target_id: p.id });
-      document.getElementById("mergeModal").style.display = "none";
-      openPersonDetail(p.id);
-    });
-    list.appendChild(item);
-  }
-  document.getElementById("mergeModal").style.display = "flex";
+  await safeRun(async () => {
+    const persons = await apiGet("/persons");
+    const list = document.getElementById("mergeList");
+    list.innerHTML = "";
+    for (const p of persons) {
+      if (p.id === currentPersonId) continue;
+      const item = el("div", "merge-list-item");
+      const img = el("img");
+      img.src = `${API}/faces/${p.representative_face_id}/thumb`;
+      const label = el("span", null, p.name ? escapeHtml(p.name) : t("unnamed_count", p.face_count));
+      item.appendChild(img);
+      item.appendChild(label);
+      item.addEventListener("click", async () => {
+        const merged = await safeRun(
+          () => apiJson("POST", "/persons/merge", { source_id: currentPersonId, target_id: p.id }),
+          t("error_merge_people")
+        );
+        if (merged === null) return;
+        document.getElementById("mergeModal").style.display = "none";
+        loadPeopleStats();
+        openPersonDetail(p.id);
+      });
+      list.appendChild(item);
+    }
+    document.getElementById("mergeModal").style.display = "flex";
+  }, t("error_merge_people"));
 });
 document.getElementById("cancelMerge").addEventListener("click", () => {
   document.getElementById("mergeModal").style.display = "none";
@@ -405,7 +510,12 @@ document.getElementById("startScan").addEventListener("click", async () => {
 function pollScanStatus() {
   clearInterval(scanPollTimer);
   scanPollTimer = setInterval(async () => {
-    const status = await apiGet("/scan/status");
+    const status = await safeRun(() => apiGet("/scan/status"), t("error_scan_status"));
+    if (!status) {
+      clearInterval(scanPollTimer);
+      document.getElementById("startScan").disabled = false;
+      return;
+    }
     const pct = status.total > 0 ? Math.round((status.processed / status.total) * 100) : 0;
     document.getElementById("progressFill").style.width = pct + "%";
     const scanMessage = status.message || status.status;
@@ -430,6 +540,7 @@ function pollScanStatus() {
         setTimeout(() => {
           scanModal.style.display = "none";
           showView(currentView, true);
+          loadPeopleStats();
         }, 800);
       }
     }
@@ -467,6 +578,7 @@ async function loadBrowser(path) {
   try {
     data = await apiGet(`/browse?path=${encodeURIComponent(path)}`);
   } catch (e) {
+    showError(t("error_browse_folder"), e);
     return;
   }
   browserCurrentPath = data.current_path;
@@ -504,46 +616,57 @@ document.getElementById("feedbackClose").addEventListener("click", () => {
 });
 
 async function loadNextFeedback() {
-  document.getElementById("feedbackContent").style.display = "none";
-  document.getElementById("feedbackDone").style.display = "none";
-  document.querySelector(".feedback-buttons").style.display = "none";
-  document.getElementById("feedbackSub").textContent = t("feedback_loading");
+  await safeRun(async () => {
+    document.getElementById("feedbackContent").style.display = "none";
+    document.getElementById("feedbackDone").style.display = "none";
+    document.querySelector(".feedback-buttons").style.display = "none";
+    document.getElementById("feedbackSub").textContent = t("feedback_loading");
 
-  const res = await apiGet("/feedback/next");
-  if (res.done) {
-    feedbackCurrent = null;
-    document.getElementById("feedbackDone").style.display = "block";
-    document.getElementById("feedbackSub").textContent = "";
-    return;
-  }
-  feedbackCurrent = res;
-  document.getElementById("feedbackContent").style.display = "flex";
-  document.querySelector(".feedback-buttons").style.display = "flex";
-  document.getElementById("feedbackSub").textContent = t("feedback_sub", Math.round(res.similarity * 100));
+    const res = await apiGet("/feedback/next");
+    if (res.done) {
+      feedbackCurrent = null;
+      document.getElementById("feedbackDone").style.display = "block";
+      document.getElementById("feedbackSub").textContent = "";
+      return;
+    }
+    feedbackCurrent = res;
+    document.getElementById("feedbackContent").style.display = "flex";
+    document.querySelector(".feedback-buttons").style.display = "flex";
+    document.getElementById("feedbackSub").textContent = t("feedback_sub", Math.round(res.similarity * 100));
 
-  document.getElementById("feedbackImgA").src = `${API}/faces/${res.person_a.representative_face_id}/thumb`;
-  document.getElementById("feedbackNameA").textContent = res.person_a.name || t("unnamed");
-  document.getElementById("feedbackImgB").src = `${API}/faces/${res.person_b.representative_face_id}/thumb`;
-  document.getElementById("feedbackNameB").textContent = res.person_b.name || t("unnamed");
+    document.getElementById("feedbackImgA").src = `${API}/faces/${res.person_a.representative_face_id}/thumb`;
+    document.getElementById("feedbackNameA").textContent = res.person_a.name || t("unnamed");
+    document.getElementById("feedbackImgB").src = `${API}/faces/${res.person_b.representative_face_id}/thumb`;
+    document.getElementById("feedbackNameB").textContent = res.person_b.name || t("unnamed");
+  }, t("error_feedback"));
 }
 
 document.getElementById("feedbackYes").addEventListener("click", async () => {
   if (!feedbackCurrent) return;
-  await apiJson("POST", "/feedback/decide", {
-    person_a_id: feedbackCurrent.person_a.id,
-    person_b_id: feedbackCurrent.person_b.id,
-    decision: "merge",
-  });
-  loadNextFeedback();
+  const saved = await safeRun(
+    () => apiJson("POST", "/feedback/decide", {
+      person_a_id: feedbackCurrent.person_a.id,
+      person_b_id: feedbackCurrent.person_b.id,
+      decision: "merge",
+    }),
+    t("error_feedback")
+  );
+  if (saved !== null) {
+    loadPeopleStats();
+    loadNextFeedback();
+  }
 });
 document.getElementById("feedbackNo").addEventListener("click", async () => {
   if (!feedbackCurrent) return;
-  await apiJson("POST", "/feedback/decide", {
-    person_a_id: feedbackCurrent.person_a.id,
-    person_b_id: feedbackCurrent.person_b.id,
-    decision: "reject",
-  });
-  loadNextFeedback();
+  const saved = await safeRun(
+    () => apiJson("POST", "/feedback/decide", {
+      person_a_id: feedbackCurrent.person_a.id,
+      person_b_id: feedbackCurrent.person_b.id,
+      decision: "reject",
+    }),
+    t("error_feedback")
+  );
+  if (saved !== null) loadNextFeedback();
 });
 
 // ---------------- Organize ----------------
@@ -554,7 +677,12 @@ document.getElementById("organizeBtn").addEventListener("click", async () => {
   document.getElementById("confirmOrganize").disabled = false;
   const summaryBox = document.getElementById("organizeSummary");
   summaryBox.innerHTML = "...";
-  const preview = await apiGet("/organize/preview");
+  const preview = await safeRun(() => apiGet("/organize/preview"), t("error_organize_preview"));
+  if (!preview) {
+    summaryBox.textContent = t("error_organize_preview");
+    document.getElementById("confirmOrganize").disabled = true;
+    return;
+  }
   summaryBox.innerHTML = "";
   if (preview.total_photos === 0) {
     summaryBox.textContent = t("organize_no_data");
@@ -594,7 +722,7 @@ document.getElementById("confirmOrganize").addEventListener("click", async () =>
     if (currentView === "photos") loadPhotos();
   } catch (e) {
     resultBox.classList.add("has-errors");
-    resultBox.textContent = e.message;
+    resultBox.textContent = `${t("error_organize_execute")} ${e.message}`;
   } finally {
     btn.disabled = false;
   }
@@ -633,7 +761,8 @@ Object.keys(settingInputs).forEach((key) => {
 });
 
 document.getElementById("settingsBtn").addEventListener("click", async () => {
-  const data = await apiGet("/settings");
+  const data = await safeRun(() => apiGet("/settings"), t("error_settings_load"));
+  if (!data) return;
   fillSettingsForm(data.values);
   settingsModal.style.display = "flex";
 });
@@ -647,45 +776,114 @@ document.getElementById("saveSettings").addEventListener("click", async () => {
     dbscan_min_samples: parseInt(settingInputs.dbscan_min_samples.value, 10),
     feedback_min_sim: parseFloat(settingInputs.feedback_min_sim.value),
   };
-  const data = await apiJson("PUT", "/settings", payload);
+  const data = await safeRun(() => apiJson("PUT", "/settings", payload), t("error_settings_save"));
+  if (!data) return;
   fillSettingsForm(data.values);
   alert(t("settings_saved"));
   settingsModal.style.display = "none";
 });
 document.getElementById("resetSettings").addEventListener("click", async () => {
   if (!confirm(t("settings_reset_confirm"))) return;
-  const res = await fetch(`${API}/settings`, { method: "DELETE" });
-  const data = await res.json();
+  const data = await safeRun(() => apiJson("DELETE", "/settings"), t("error_settings_reset"));
+  if (!data) return;
   fillSettingsForm(data.values);
 });
 
 // ---------------- Recluster ----------------
 const reclusterModal = document.getElementById("reclusterModal");
+let reclusterPollTimer = null;
+
+function setReclusterRunning(isRunning) {
+  document.getElementById("confirmRecluster").disabled = isRunning;
+  document.getElementById("requestStopRecluster").disabled = !isRunning;
+}
+
+function renderReclusterStatus(status) {
+  document.getElementById("reclusterStatus").textContent = status.status || "idle";
+  document.getElementById("reclusterMessage").textContent = status.message || "—";
+  document.getElementById("reclusterMergedCount").textContent = status.merged_count || 0;
+  document.getElementById("reclusterSkippedConflicts").textContent = status.skipped_named_conflicts || 0;
+  const logText = (status.logs || [])
+    .map((entry) => `[${entry.at || ""}] ${entry.message || ""}`)
+    .join("\n");
+  const logsBox = document.getElementById("reclusterLogs");
+  logsBox.value = logText;
+  logsBox.scrollTop = logsBox.scrollHeight;
+
+  const resultBox = document.getElementById("reclusterResult");
+  if (status.status && status.status !== "idle") {
+    resultBox.style.display = "block";
+    resultBox.className = "organize-result";
+    if (status.status === "error") resultBox.classList.add("has-errors");
+    if (["done", "cancelled", "error"].includes(status.status)) {
+      resultBox.textContent = status.message || t("recluster_result", status.merged_count || 0, status.skipped_named_conflicts || 0);
+    } else {
+      resultBox.textContent = status.message || t("recluster_running");
+    }
+  }
+}
+
+function stopReclusterPolling() {
+  if (reclusterPollTimer) clearInterval(reclusterPollTimer);
+  reclusterPollTimer = null;
+}
+
+async function pollReclusterStatus() {
+  try {
+    const status = await apiGet("/recluster/status");
+    renderReclusterStatus(status);
+    const running = status.status === "running" || status.status === "cancelling";
+    setReclusterRunning(running);
+    if (["done", "error", "cancelled"].includes(status.status)) {
+      stopReclusterPolling();
+      loadPeopleStats();
+      if (currentView === "people") loadPeople();
+    }
+  } catch (e) {
+    stopReclusterPolling();
+    setReclusterRunning(false);
+    const resultBox = document.getElementById("reclusterResult");
+    resultBox.style.display = "block";
+    resultBox.className = "organize-result has-errors";
+    resultBox.textContent = `${t("error_recluster")} ${e.message}`;
+  }
+}
+
+function startReclusterPolling() {
+  stopReclusterPolling();
+  pollReclusterStatus();
+  reclusterPollTimer = setInterval(pollReclusterStatus, 800);
+}
+
 document.getElementById("reclusterBtn").addEventListener("click", () => {
   document.getElementById("reclusterResult").style.display = "none";
-  document.getElementById("confirmRecluster").disabled = false;
+  setReclusterRunning(false);
   reclusterModal.style.display = "flex";
+  pollReclusterStatus();
 });
 document.getElementById("cancelRecluster").addEventListener("click", () => {
   reclusterModal.style.display = "none";
 });
+document.getElementById("requestStopRecluster").addEventListener("click", async () => {
+  document.getElementById("requestStopRecluster").disabled = true;
+  await safeRun(() => apiJson("POST", "/recluster/cancel", {}), t("error_recluster"));
+  startReclusterPolling();
+});
 document.getElementById("confirmRecluster").addEventListener("click", async () => {
-  const btn = document.getElementById("confirmRecluster");
-  btn.disabled = true;
   const resultBox = document.getElementById("reclusterResult");
   resultBox.style.display = "block";
   resultBox.className = "organize-result";
   resultBox.textContent = t("recluster_running");
+  setReclusterRunning(true);
 
   try {
-    const result = await apiJson("POST", "/recluster", {});
-    resultBox.textContent = t("recluster_result", result.merged_count, result.skipped_named_conflicts);
-    if (currentView === "people") loadPeople();
+    const started = await apiJson("POST", "/recluster/start", {});
+    if (started.started) startReclusterPolling();
   } catch (e) {
+    stopReclusterPolling();
+    setReclusterRunning(false);
     resultBox.classList.add("has-errors");
-    resultBox.textContent = e.message;
-  } finally {
-    btn.disabled = false;
+    resultBox.textContent = `${t("error_recluster")} ${e.message}`;
   }
 });
 
