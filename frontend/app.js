@@ -13,6 +13,7 @@ const translations = {
     scan_button: "+ Quét thư mục",
     all_photos: "Tất cả ảnh",
     people_title: "Con người",
+    people_stats: (total, named, unnamed) => `Tổng: ${total} · Đã đặt tên: ${named} · Chưa đặt tên: ${unnamed}`,
     empty_photos: "Chưa có ảnh nào.",
     empty_photos_sub: 'Nhấn "Quét thư mục" ở góc trái để bắt đầu.',
     empty_people: "Chưa nhận diện được ai.",
@@ -74,6 +75,7 @@ const translations = {
     recluster_title: "Gộp lại theo thông số hiện tại?",
     recluster_sub: 'App sẽ tự gộp các nhóm người có độ giống nhau cao (theo ngưỡng "khớp người đã biết" trong Cài đặt). Nếu 2 người ĐỀU đã được đặt tên, app sẽ KHÔNG tự gộp để tránh ảnh hưởng nhóm bạn đã xác nhận — những trường hợp đó vẫn cần xác nhận tay qua "Kiểm tra lại nhóm".',
     recluster_confirm_btn: "Bắt đầu gộp",
+    recluster_stop_btn: "Yêu cầu dừng",
     recluster_running: "Đang gộp...",
     recluster_result: (merged, skipped) => `Đã gộp ${merged} cặp người. Bỏ qua ${skipped} cặp vì cả 2 đều đã có tên khác nhau (cần xác nhận tay).`,
     scan_errors_count: (n) => `${n} ảnh lỗi`,
@@ -105,6 +107,7 @@ const translations = {
     scan_button: "+ Scan folder",
     all_photos: "All Photos",
     people_title: "People",
+    people_stats: (total, named, unnamed) => `Total: ${total} · Named: ${named} · Unnamed: ${unnamed}`,
     empty_photos: "No photos yet.",
     empty_photos_sub: 'Click "Scan folder" on the left to get started.',
     empty_people: "No one recognized yet.",
@@ -166,6 +169,7 @@ const translations = {
     recluster_title: "Recluster using current settings?",
     recluster_sub: 'The app will automatically merge groups of people with high similarity (based on the "known-person match" threshold in Settings). If BOTH people already have names, they will NOT be auto-merged to avoid disrupting groups you already confirmed — those still need manual confirmation via "Review groupings".',
     recluster_confirm_btn: "Start merging",
+    recluster_stop_btn: "Request stop",
     recluster_running: "Merging...",
     recluster_result: (merged, skipped) => `Merged ${merged} pairs. Skipped ${skipped} pairs because both already had different names (needs manual confirmation).`,
     scan_errors_count: (n) => `${n} failed image${n === 1 ? "" : "s"}`,
@@ -210,6 +214,8 @@ function applyLanguage() {
   document.getElementById("langToggle").checked = currentLang === "en";
   if (currentView === "photos") document.getElementById("viewTitle").textContent = t("all_photos");
   else document.getElementById("viewTitle").textContent = t("people_title");
+  if (currentView === "people") loadPeopleStats();
+  else hidePeopleStats();
 }
 
 document.getElementById("langToggle").addEventListener("change", (e) => {
@@ -268,6 +274,29 @@ function escapeHtml(str) {
   return d.innerHTML;
 }
 
+function hidePeopleStats() {
+  const stats = document.getElementById("peopleStats");
+  stats.style.display = "none";
+  stats.textContent = "";
+}
+
+async function loadPeopleStats() {
+  if (currentView !== "people") {
+    hidePeopleStats();
+    return;
+  }
+
+  const stats = document.getElementById("peopleStats");
+  const data = await safeRun(() => apiGet("/persons/stats"), t("error_load_people"));
+  if (!data || currentView !== "people") {
+    hidePeopleStats();
+    return;
+  }
+
+  stats.textContent = t("people_stats", data.total, data.named, data.unnamed);
+  stats.style.display = "inline";
+}
+
 // ---------------- Navigation ----------------
 document.querySelectorAll(".nav-item[data-view]").forEach((btn) => {
   btn.addEventListener("click", () => showView(btn.dataset.view));
@@ -284,14 +313,17 @@ function showView(view, forceReload) {
   if (view === "photos") {
     document.getElementById("view-photos").classList.add("active");
     document.getElementById("viewTitle").textContent = t("all_photos");
+    hidePeopleStats();
     if (changed) loadPhotos();
   } else if (view === "people") {
     document.getElementById("view-people").classList.add("active");
     document.getElementById("viewTitle").textContent = t("people_title");
+    loadPeopleStats();
     if (changed) loadPeople();
   } else if (view === "person-detail") {
     document.getElementById("view-person-detail").classList.add("active");
     document.getElementById("viewTitle").textContent = t("people_title");
+    hidePeopleStats();
   }
 }
 
@@ -331,6 +363,7 @@ document.getElementById("lightbox").addEventListener("click", (e) => {
 
 // ---------------- People view ----------------
 async function loadPeople() {
+  loadPeopleStats();
   await safeRun(async () => {
     const grid = document.getElementById("peopleGrid");
     const empty = document.getElementById("peopleEmpty");
@@ -342,7 +375,7 @@ async function loadPeople() {
       const avatar = el("img", "person-avatar");
       avatar.src = `${API}/faces/${p.representative_face_id}/thumb`;
       const name = el("div", "person-card-name", p.name ? escapeHtml(p.name) : t("unnamed"));
-      const count = el("div", "person-card-count", `${p.face_count} ${t("photos_suffix")}`);
+      const count = el("div", "person-card-count", `${p.photo_count} ${t("photos_suffix")}`);
       card.appendChild(avatar);
       card.appendChild(name);
       card.appendChild(count);
@@ -363,7 +396,7 @@ async function openPersonDetail(personId) {
 
     document.getElementById("personHeaderThumb").src = `${API}/faces/${person.representative_face_id}/thumb`;
     document.getElementById("personNameInput").value = person.name || "";
-    document.getElementById("personCount").textContent = `${person.face_count} ${t("photos_suffix")}`;
+    document.getElementById("personCount").textContent = `${person.photo_count} ${t("photos_suffix")}`;
 
     const photos = await apiGet(`/persons/${personId}/photos`);
     const grid = document.getElementById("personPhotosGrid");
@@ -384,11 +417,14 @@ let nameSaveTimer = null;
 document.getElementById("personNameInput").addEventListener("input", (e) => {
   clearTimeout(nameSaveTimer);
   const value = e.target.value;
+  const personId = currentPersonId;
   nameSaveTimer = setTimeout(async () => {
-    await safeRun(
-      () => apiJson("PUT", `/persons/${currentPersonId}`, { name: value }),
-      t("error_save_name")
-    );
+    try {
+      await apiJson("PUT", `/persons/${personId}`, { name: value });
+      loadPeopleStats();
+    } catch (error) {
+      showError(t("error_save_name"), error);
+    }
   }, 500);
 });
 
@@ -398,7 +434,10 @@ document.getElementById("deletePersonBtn").addEventListener("click", async () =>
     () => apiJson("DELETE", `/persons/${currentPersonId}`),
     t("error_delete_person")
   );
-  if (deleted !== null) showView("people");
+  if (deleted !== null) {
+    showView("people");
+    loadPeopleStats();
+  }
 });
 
 // ---------------- Merge ----------------
@@ -422,6 +461,7 @@ document.getElementById("mergeBtn").addEventListener("click", async () => {
         );
         if (merged === null) return;
         document.getElementById("mergeModal").style.display = "none";
+        loadPeopleStats();
         openPersonDetail(p.id);
       });
       list.appendChild(item);
@@ -500,6 +540,7 @@ function pollScanStatus() {
         setTimeout(() => {
           scanModal.style.display = "none";
           showView(currentView, true);
+          loadPeopleStats();
         }, 800);
       }
     }
@@ -610,7 +651,10 @@ document.getElementById("feedbackYes").addEventListener("click", async () => {
     }),
     t("error_feedback")
   );
-  if (saved !== null) loadNextFeedback();
+  if (saved !== null) {
+    loadPeopleStats();
+    loadNextFeedback();
+  }
 });
 document.getElementById("feedbackNo").addEventListener("click", async () => {
   if (!feedbackCurrent) return;
@@ -747,31 +791,99 @@ document.getElementById("resetSettings").addEventListener("click", async () => {
 
 // ---------------- Recluster ----------------
 const reclusterModal = document.getElementById("reclusterModal");
+let reclusterPollTimer = null;
+
+function setReclusterRunning(isRunning) {
+  document.getElementById("confirmRecluster").disabled = isRunning;
+  document.getElementById("requestStopRecluster").disabled = !isRunning;
+}
+
+function renderReclusterStatus(status) {
+  document.getElementById("reclusterStatus").textContent = status.status || "idle";
+  document.getElementById("reclusterMessage").textContent = status.message || "—";
+  document.getElementById("reclusterMergedCount").textContent = status.merged_count || 0;
+  document.getElementById("reclusterSkippedConflicts").textContent = status.skipped_named_conflicts || 0;
+  const logText = (status.logs || [])
+    .map((entry) => `[${entry.at || ""}] ${entry.message || ""}`)
+    .join("\n");
+  const logsBox = document.getElementById("reclusterLogs");
+  logsBox.value = logText;
+  logsBox.scrollTop = logsBox.scrollHeight;
+
+  const resultBox = document.getElementById("reclusterResult");
+  if (status.status && status.status !== "idle") {
+    resultBox.style.display = "block";
+    resultBox.className = "organize-result";
+    if (status.status === "error") resultBox.classList.add("has-errors");
+    if (["done", "cancelled", "error"].includes(status.status)) {
+      resultBox.textContent = status.message || t("recluster_result", status.merged_count || 0, status.skipped_named_conflicts || 0);
+    } else {
+      resultBox.textContent = status.message || t("recluster_running");
+    }
+  }
+}
+
+function stopReclusterPolling() {
+  if (reclusterPollTimer) clearInterval(reclusterPollTimer);
+  reclusterPollTimer = null;
+}
+
+async function pollReclusterStatus() {
+  try {
+    const status = await apiGet("/recluster/status");
+    renderReclusterStatus(status);
+    const running = status.status === "running" || status.status === "cancelling";
+    setReclusterRunning(running);
+    if (["done", "error", "cancelled"].includes(status.status)) {
+      stopReclusterPolling();
+      loadPeopleStats();
+      if (currentView === "people") loadPeople();
+    }
+  } catch (e) {
+    stopReclusterPolling();
+    setReclusterRunning(false);
+    const resultBox = document.getElementById("reclusterResult");
+    resultBox.style.display = "block";
+    resultBox.className = "organize-result has-errors";
+    resultBox.textContent = `${t("error_recluster")} ${e.message}`;
+  }
+}
+
+function startReclusterPolling() {
+  stopReclusterPolling();
+  pollReclusterStatus();
+  reclusterPollTimer = setInterval(pollReclusterStatus, 800);
+}
+
 document.getElementById("reclusterBtn").addEventListener("click", () => {
   document.getElementById("reclusterResult").style.display = "none";
-  document.getElementById("confirmRecluster").disabled = false;
+  setReclusterRunning(false);
   reclusterModal.style.display = "flex";
+  pollReclusterStatus();
 });
 document.getElementById("cancelRecluster").addEventListener("click", () => {
   reclusterModal.style.display = "none";
 });
+document.getElementById("requestStopRecluster").addEventListener("click", async () => {
+  document.getElementById("requestStopRecluster").disabled = true;
+  await safeRun(() => apiJson("POST", "/recluster/cancel", {}), t("error_recluster"));
+  startReclusterPolling();
+});
 document.getElementById("confirmRecluster").addEventListener("click", async () => {
-  const btn = document.getElementById("confirmRecluster");
-  btn.disabled = true;
   const resultBox = document.getElementById("reclusterResult");
   resultBox.style.display = "block";
   resultBox.className = "organize-result";
   resultBox.textContent = t("recluster_running");
+  setReclusterRunning(true);
 
   try {
-    const result = await apiJson("POST", "/recluster", {});
-    resultBox.textContent = t("recluster_result", result.merged_count, result.skipped_named_conflicts);
-    if (currentView === "people") loadPeople();
+    const started = await apiJson("POST", "/recluster/start", {});
+    if (started.started) startReclusterPolling();
   } catch (e) {
+    stopReclusterPolling();
+    setReclusterRunning(false);
     resultBox.classList.add("has-errors");
     resultBox.textContent = `${t("error_recluster")} ${e.message}`;
-  } finally {
-    btn.disabled = false;
   }
 });
 
