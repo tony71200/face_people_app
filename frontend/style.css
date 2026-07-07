@@ -563,6 +563,16 @@ html, body {
 .setting-row {
   margin-bottom: 16px;
 }
+.cleanup-row {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.cleanup-row button {
+  margin-top: 8px;
+}
+.import-hint {
+  color: var(--accent);
+}
 .setting-label {
   display: flex;
   justify-content: space-between;

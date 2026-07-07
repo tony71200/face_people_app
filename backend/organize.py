@@ -37,7 +37,7 @@ def _strip_legacy_nested_organized(rel: str) -> str:
     return rel
 
 
-def build_plan(conn):
+def build_plan(conn, scan_root: str = None):
     """
     Trả về danh sách các thao tác cần thực hiện:
     [{ image_id, src, dst, person_name }, ...]
@@ -46,6 +46,11 @@ def build_plan(conn):
     Dùng rel_path đã lưu ổn định từ lúc quét (không tính lại từ path hiện
     tại), vì path hiện tại có thể đã đổi do lần move trước đó -> tính lại
     sẽ tạo ra thư mục Organized lồng nhau.
+
+    scan_root (tuỳ chọn): nếu truyền vào, CHỈ tổ chức những ảnh có
+    scan_root khớp (VD chỉ ảnh vừa quét từ 1 folder mới) — nhưng tên người
+    dùng để gán vẫn lấy từ TOÀN BỘ database (nên vẫn nhận diện đúng người
+    đã đặt tên trước đó, dù người đó lần đầu xuất hiện ở folder khác).
     """
     rows = db.get_named_faces_with_area(conn)
 
@@ -54,6 +59,8 @@ def build_plan(conn):
         cur = best_per_image.get(r["image_id"])
         if cur is None or r["area"] > cur["area"]:
             best_per_image[r["image_id"]] = r
+
+    norm_scan_root = os.path.abspath(scan_root) if scan_root else None
 
     plan = []
     for image_id, row in best_per_image.items():
@@ -64,13 +71,17 @@ def build_plan(conn):
         if not os.path.exists(src):
             continue
 
-        scan_root = img["scan_root"] or os.path.dirname(src)
+        img_scan_root = img["scan_root"] or os.path.dirname(src)
+
+        if norm_scan_root and os.path.abspath(img_scan_root) != norm_scan_root:
+            continue  # chỉ tổ chức ảnh thuộc scan_root được yêu cầu
+
         rel = img["rel_path"]
         if not rel:
             # Ảnh cũ (quét trước khi có rel_path) -> tự tính, đồng thời sửa
             # các trường hợp đã bị lỗi lồng Organized/Organized ở bản trước
             try:
-                rel = os.path.relpath(src, scan_root)
+                rel = os.path.relpath(src, img_scan_root)
                 if rel.startswith(".."):
                     rel = os.path.basename(src)
             except ValueError:
@@ -78,7 +89,7 @@ def build_plan(conn):
         rel = _strip_legacy_nested_organized(rel)
 
         person_folder = sanitize_name(row["person_name"])
-        dest_path = os.path.join(scan_root, "Organized", person_folder, rel)
+        dest_path = os.path.join(img_scan_root, "Organized", person_folder, rel)
 
         plan.append({
             "image_id": image_id,

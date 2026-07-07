@@ -95,6 +95,18 @@ const translations = {
     error_recluster: "Không gộp lại được.",
     error_scan_status: "Không cập nhật được trạng thái quét.",
     error_browse_folder: "Không duyệt được thư mục này.",
+    import_data_btn: "+ Thêm data mới",
+    import_hint: "Sau khi quét xong, ảnh của người đã đặt tên trong folder này sẽ được tự động sắp xếp vào thư mục theo tên (vẫn nhận diện đúng người đã có từ trước, dù ở folder khác).",
+    import_organize_confirm: (n) => `Đã quét xong. Có ${n} ảnh của người đã đặt tên trong folder này sẽ được tổ chức vào thư mục "Organized/<Tên>". Tiếp tục?`,
+    import_no_named_data: "Đã quét xong, nhưng chưa có ảnh nào của người đã đặt tên trong folder này để tổ chức.",
+    error_import_organize: "Quét xong nhưng không tổ chức được ảnh tự động.",
+    cleanup_title: "Dọn dẹp dữ liệu thumbnail",
+    cleanup_desc: "Xoá các thumbnail không cần thiết trong thư mục data (ảnh toàn cảnh, khuôn mặt của người chưa đặt tên, cache HEIC), chỉ giữ lại ảnh đại diện của người đã đặt tên. Ảnh/khuôn mặt vẫn hiển thị lại bình thường sau đó (tự tạo lại từ ảnh gốc khi cần), chỉ chậm hơn một chút ở lần xem đầu tiên.",
+    cleanup_btn: "Dọn dẹp ngay",
+    cleanup_confirm: "Xoá thumbnail thừa, chỉ giữ ảnh đại diện của người đã đặt tên? Ảnh vẫn sẽ tự hiển thị lại bình thường khi cần (chỉ chậm hơn lần xem đầu).",
+    cleanup_running: "Đang dọn dẹp...",
+    cleanup_result: (count, mb) => `Đã xoá ${count} file, giải phóng ${mb} MB. Giữ lại ảnh đại diện của người đã đặt tên.`,
+    error_cleanup: "Không dọn dẹp được dữ liệu.",
   },
   en: {
     library: "Photo Library",
@@ -189,6 +201,18 @@ const translations = {
     error_recluster: "Could not recluster people.",
     error_scan_status: "Could not update scan status.",
     error_browse_folder: "Could not browse this folder.",
+    import_data_btn: "+ Import new data",
+    import_hint: "After scanning, photos of already-named people in this folder will be automatically sorted into named folders (still correctly recognizing people already known, even from a different folder).",
+    import_organize_confirm: (n) => `Scan complete. ${n} photo(s) of already-named people in this folder will be organized into "Organized/<Name>" folders. Continue?`,
+    import_no_named_data: "Scan complete, but there are no photos of named people in this folder to organize yet.",
+    error_import_organize: "Scan finished but automatic organizing failed.",
+    cleanup_title: "Clean up thumbnail data",
+    cleanup_desc: "Delete unnecessary thumbnails in the data folder (full-image thumbnails, face thumbnails of unnamed people, HEIC cache), keeping only the representative photo of each named person. Photos/faces still display normally afterward (regenerated on demand from the original), just slightly slower the first time.",
+    cleanup_btn: "Clean up now",
+    cleanup_confirm: "Delete extra thumbnails, keeping only representative photos of named people? Photos will still display normally when needed (just slower the first time).",
+    cleanup_running: "Cleaning up...",
+    cleanup_result: (count, mb) => `Deleted ${count} file(s), freed ${mb} MB. Kept representative photos of named people.`,
+    error_cleanup: "Could not clean up data.",
   },
 };
 
@@ -475,11 +499,22 @@ document.getElementById("cancelMerge").addEventListener("click", () => {
 
 // ---------------- Scan modal ----------------
 const scanModal = document.getElementById("scanModal");
-document.getElementById("scanBtn").addEventListener("click", () => {
+let isImportFlow = false; // true khi mở modal quét từ nút "Thêm data mới"
+
+function openScanModal(importMode) {
+  isImportFlow = importMode;
+  document.getElementById("importHint").style.display = importMode ? "block" : "none";
+  document.getElementById("scanModalTitle").textContent = importMode
+    ? t("import_data_btn").replace(/^\+\s*/, "")
+    : t("scan_modal_title");
   scanModal.style.display = "flex";
   document.getElementById("scanProgress").style.display = "none";
   document.getElementById("startScan").disabled = false;
-});
+}
+
+document.getElementById("scanBtn").addEventListener("click", () => openScanModal(false));
+document.getElementById("importDataBtn").addEventListener("click", () => openScanModal(true));
+
 document.getElementById("cancelScan").addEventListener("click", () => {
   scanModal.style.display = "none";
 });
@@ -506,6 +541,36 @@ document.getElementById("startScan").addEventListener("click", async () => {
   }
   pollScanStatus();
 });
+
+// Sau khi "Thêm data mới" quét xong: tự tổ chức (organize) CHỈ ảnh trong
+// folder vừa quét vào thư mục theo tên — nhưng vẫn nhận diện người dựa trên
+// TOÀN BỘ database (nên vẫn khớp đúng người đã đặt tên từ trước, dù ở
+// folder khác). Xem backend: organize.build_plan(scan_root=...).
+async function organizeAfterImport(scanRoot) {
+  if (!scanRoot) return;
+  const preview = await safeRun(
+    () => apiGet(`/organize/preview?scan_root=${encodeURIComponent(scanRoot)}`),
+    t("error_import_organize")
+  );
+  if (!preview) return;
+  if (preview.total_photos === 0) {
+    alert(t("import_no_named_data"));
+    return;
+  }
+  if (!confirm(t("import_organize_confirm", preview.total_photos))) return;
+
+  const result = await safeRun(
+    () => apiJson("POST", "/organize/execute", { mode: "copy", scan_root: scanRoot }),
+    t("error_import_organize")
+  );
+  if (!result) return;
+  let msg = t("organize_result_ok", result.processed, result.skipped);
+  if (result.errors && result.errors.length > 0) {
+    msg += t("organize_result_errors", result.errors.length);
+  }
+  alert(msg);
+  if (currentView === "photos") loadPhotos();
+}
 
 function pollScanStatus() {
   clearInterval(scanPollTimer);
@@ -537,10 +602,16 @@ function pollScanStatus() {
       if (status.status === "error") {
         alert(t("alert_scan_failed", status.message));
       } else {
-        setTimeout(() => {
+        const wasImportFlow = isImportFlow;
+        const scanRoot = status.scan_root;
+        setTimeout(async () => {
           scanModal.style.display = "none";
           showView(currentView, true);
           loadPeopleStats();
+          isImportFlow = false;
+          if (wasImportFlow) {
+            await organizeAfterImport(scanRoot);
+          }
         }, 800);
       }
     }
@@ -787,6 +858,35 @@ document.getElementById("resetSettings").addEventListener("click", async () => {
   const data = await safeRun(() => apiJson("DELETE", "/settings"), t("error_settings_reset"));
   if (!data) return;
   fillSettingsForm(data.values);
+});
+
+// ---------------- Cleanup thumbnail thừa ----------------
+document.getElementById("cleanupThumbsBtn").addEventListener("click", async () => {
+  if (!confirm(t("cleanup_confirm"))) return;
+  const btn = document.getElementById("cleanupThumbsBtn");
+  const resultBox = document.getElementById("cleanupResult");
+  btn.disabled = true;
+  resultBox.style.display = "block";
+  resultBox.className = "organize-result";
+  resultBox.textContent = t("cleanup_running");
+
+  try {
+    const result = await apiJson("POST", "/cleanup/thumbs", {});
+    const mb = (result.freed_bytes / (1024 * 1024)).toFixed(1);
+    resultBox.textContent = t("cleanup_result", result.deleted_count, mb);
+    if (result.errors && result.errors.length > 0) {
+      resultBox.classList.add("has-errors");
+    }
+    // Ảnh/khuôn mặt đang hiển thị có thể đã bị xoá thumbnail -> tải lại view
+    // hiện tại để backend tự sinh lại từ ảnh gốc khi cần.
+    showView(currentView, true);
+    loadPeopleStats();
+  } catch (e) {
+    resultBox.classList.add("has-errors");
+    resultBox.textContent = `${t("error_cleanup")} ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 // ---------------- Recluster ----------------

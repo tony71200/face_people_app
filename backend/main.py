@@ -25,6 +25,7 @@ import db
 import utils
 import clustering
 import organize
+import cleanup
 from face_engine import get_engine
 
 BASE_DIR = Path(__file__).parent
@@ -44,6 +45,7 @@ SCAN_STATE = {
     "gpu_active": None,
     "failed": 0,
     "errors": [],
+    "scan_root": None,      # đường dẫn tuyệt đối đã resolve của folder vừa quét
 }
 SCAN_LOCK = threading.Lock()
 
@@ -86,6 +88,8 @@ def _do_scan(folder: str, recursive: bool, use_gpu: bool):
     conn = db.get_conn()
     try:
         scan_root = str(Path(folder).resolve())
+        with SCAN_LOCK:
+            SCAN_STATE["scan_root"] = scan_root
         paths = utils.list_images(folder, recursive=recursive)
         total = len(paths)
         with SCAN_LOCK:
@@ -171,7 +175,7 @@ def start_scan(req: ScanRequest):
         SCAN_STATE.update(
             status="scanning", processed=0, total=0,
             message="Đang tìm ảnh...", gpu_active=None,
-            failed=0, errors=[],
+            failed=0, errors=[], scan_root=None,
         )
     t = threading.Thread(target=_do_scan, args=(req.folder, req.recursive, req.use_gpu), daemon=True)
     t.start()
@@ -569,10 +573,10 @@ def api_feedback_decide(req: FeedbackDecision):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/organize/preview")
-def api_organize_preview():
+def api_organize_preview(scan_root: Optional[str] = None):
     conn = db.get_conn()
     try:
-        plan = organize.build_plan(conn)
+        plan = organize.build_plan(conn, scan_root=scan_root)
         return {
             "total_photos": len(plan),
             "by_person": organize.summarize_plan(plan),
@@ -583,6 +587,7 @@ def api_organize_preview():
 
 class OrganizeRequest(BaseModel):
     mode: str  # "copy" | "move"
+    scan_root: Optional[str] = None  # nếu có: chỉ tổ chức ảnh thuộc folder này
 
 
 @app.post("/api/organize/execute")
@@ -591,7 +596,7 @@ def api_organize_execute(req: OrganizeRequest):
         raise HTTPException(400, "mode phải là 'copy' hoặc 'move'")
     conn = db.get_conn()
     try:
-        plan = organize.build_plan(conn)
+        plan = organize.build_plan(conn, scan_root=req.scan_root)
         result = organize.execute_plan(conn, plan, mode=req.mode)
         return result
     finally:
@@ -601,6 +606,42 @@ def api_organize_execute(req: OrganizeRequest):
 # ---------------------------------------------------------------------------
 # Images (Photos view)
 # ---------------------------------------------------------------------------
+
+def _ensure_image_thumb(conn, image_id: int):
+    """
+    Trả về Path tới img_{id}.jpg, tự sinh lại từ ảnh gốc nếu đã bị xoá (VD
+    sau khi chạy tính năng "Dọn dẹp dữ liệu"). Trả None nếu không còn ảnh gốc
+    để tái tạo.
+    """
+    p = THUMBS_DIR / f"img_{image_id}.jpg"
+    if p.exists():
+        return p
+    img = db.get_image(conn, image_id)
+    if not img or not img["path"] or not os.path.exists(img["path"]):
+        return None
+    _, pil_img = utils.load_image_bgr(img["path"])
+    thumb = utils.make_thumbnail(pil_img)
+    utils.save_jpeg(thumb, str(p))
+    return p
+
+
+def _ensure_face_thumb(conn, face_id: int):
+    """Trả về Path tới face_{id}.jpg, tự sinh lại từ ảnh gốc + bbox nếu đã bị xoá."""
+    p = THUMBS_DIR / f"face_{face_id}.jpg"
+    if p.exists():
+        return p
+    face = db.get_face(conn, face_id)
+    if not face:
+        return None
+    img = db.get_image(conn, face["image_id"])
+    if not img or not img["path"] or not os.path.exists(img["path"]):
+        return None
+    _, pil_img = utils.load_image_bgr(img["path"])
+    bbox = [face["bbox_x1"], face["bbox_y1"], face["bbox_x2"], face["bbox_y2"]]
+    crop = utils.crop_face(pil_img, bbox)
+    utils.save_jpeg(crop, str(p))
+    return p
+
 
 @app.get("/api/images")
 def api_list_images():
@@ -634,8 +675,12 @@ def api_image_faces(image_id: int):
 
 @app.get("/api/images/{image_id}/thumb")
 def api_image_thumb(image_id: int):
-    p = THUMBS_DIR / f"img_{image_id}.jpg"
-    if not p.exists():
+    conn = db.get_conn()
+    try:
+        p = _ensure_image_thumb(conn, image_id)
+    finally:
+        conn.close()
+    if not p or not p.exists():
         raise HTTPException(404, "Chưa có thumbnail")
     return FileResponse(p)
 
@@ -650,10 +695,16 @@ def api_image_file(image_id: int):
         path = Path(img["path"])
         if not path.exists():
             raise HTTPException(404, "File ảnh đã bị di chuyển hoặc xoá")
-        # Với HEIC, trình duyệt không hiển thị được trực tiếp -> convert nhanh sang JPEG tạm
+        # Với HEIC, trình duyệt không hiển thị được trực tiếp -> convert nhanh sang JPEG tạm.
+        # So sánh mtime của ảnh gốc với file cache: nếu ảnh gốc mới hơn (đã bị
+        # sửa/ghi đè sau khi cache được tạo), convert lại thay vì dùng cache cũ.
         if path.suffix.lower() in (".heic", ".heif"):
             tmp_path = THUMBS_DIR / f"full_{image_id}.jpg"
-            if not tmp_path.exists():
+            needs_regen = (
+                not tmp_path.exists()
+                or tmp_path.stat().st_mtime < path.stat().st_mtime
+            )
+            if needs_regen:
                 _, pil_img = utils.load_image_bgr(str(path))
                 utils.save_jpeg(pil_img, str(tmp_path), quality=92)
             return FileResponse(tmp_path)
@@ -664,10 +715,27 @@ def api_image_file(image_id: int):
 
 @app.get("/api/faces/{face_id}/thumb")
 def api_face_thumb(face_id: int):
-    p = THUMBS_DIR / f"face_{face_id}.jpg"
-    if not p.exists():
+    conn = db.get_conn()
+    try:
+        p = _ensure_face_thumb(conn, face_id)
+    finally:
+        conn.close()
+    if not p or not p.exists():
         raise HTTPException(404, "Chưa có thumbnail khuôn mặt")
     return FileResponse(p)
+
+
+# ---------------------------------------------------------------------------
+# Cleanup: dọn dẹp thumbnail thừa, chỉ giữ lại ảnh đại diện người đã đặt tên
+# ---------------------------------------------------------------------------
+
+@app.post("/api/cleanup/thumbs")
+def api_cleanup_thumbs():
+    conn = db.get_conn()
+    try:
+        return cleanup.cleanup_thumbs(conn)
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
