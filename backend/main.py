@@ -90,7 +90,18 @@ def _do_scan(folder: str, recursive: bool, use_gpu: bool):
         scan_root = str(Path(folder).resolve())
         with SCAN_LOCK:
             SCAN_STATE["scan_root"] = scan_root
+        # Lưu bền vững (bảng settings) để toggle "Dữ liệu mới" trên UI vẫn
+        # nhớ đúng lần quét gần nhất kể cả sau khi restart server.
+        db.set_setting(conn, "last_scan_root", scan_root)
         paths = utils.list_images(folder, recursive=recursive)
+
+        # Loại trừ các ảnh đã COPY ra thư mục người (tính năng "Tạo thư mục
+        # theo tên") khỏi lần quét này -> tránh quét trùng, vì không còn
+        # thư mục bao "Organized" cố định để loại trừ theo tên nữa.
+        organized_paths = db.get_organized_paths_set(conn)
+        if organized_paths:
+            paths = [p for p in paths if p not in organized_paths]
+
         total = len(paths)
         with SCAN_LOCK:
             SCAN_STATE.update(total=total, message="Đang tải model nhận diện khuôn mặt...")
@@ -238,11 +249,24 @@ def api_browse(path: str = ""):
 # Persons (People view)
 # ---------------------------------------------------------------------------
 
-@app.get("/api/persons")
-def api_list_persons():
+@app.get("/api/scan/last-root")
+def api_scan_last_root():
+    """
+    Trả về scan_root của lần quét gần nhất (bất kể "Quét thư mục" hay "Thêm
+    data mới"), dùng cho toggle "Toàn bộ / Dữ liệu mới" trên UI.
+    """
     conn = db.get_conn()
     try:
-        persons = db.list_persons(conn)
+        return {"scan_root": db.get_setting(conn, "last_scan_root")}
+    finally:
+        conn.close()
+
+
+@app.get("/api/persons")
+def api_list_persons(scan_root: Optional[str] = None):
+    conn = db.get_conn()
+    try:
+        persons = db.list_persons(conn, scan_root=scan_root)
         return [
             {
                 "id": p["id"],
@@ -258,10 +282,10 @@ def api_list_persons():
 
 
 @app.get("/api/persons/stats")
-def api_person_stats():
+def api_person_stats(scan_root: Optional[str] = None):
     conn = db.get_conn()
     try:
-        return db.get_person_stats(conn)
+        return db.get_person_stats(conn, scan_root=scan_root)
     finally:
         conn.close()
 
@@ -276,6 +300,32 @@ def api_person_photos(person_id: int):
         images = db.get_images_for_person(conn, person_id)
         return [
             {"id": img["id"], "filename": img["filename"], "width": img["width"], "height": img["height"]}
+            for img in images
+        ]
+    finally:
+        conn.close()
+
+
+@app.get("/api/persons/{person_id}/paths")
+def api_person_paths(person_id: int):
+    """
+    Trả về danh sách đường dẫn ẢNH GỐC (không phải thumbnail) của người này,
+    kèm cờ `exists` để frontend hiển thị màu (còn tồn tại / đã bị xoá-di
+    chuyển khỏi vị trí cũ). Dùng cho "Danh sách con người" dạng text thuần,
+    không cần thumbnail -> không tốn thêm dung lượng data/thumbs.
+    """
+    conn = db.get_conn()
+    try:
+        person = db.get_person(conn, person_id)
+        if not person:
+            raise HTTPException(404, "Không tìm thấy người này")
+        images = db.get_images_for_person(conn, person_id)
+        return [
+            {
+                "id": img["id"],
+                "path": img["path"],
+                "exists": bool(img["path"] and os.path.exists(img["path"])),
+            }
             for img in images
         ]
     finally:
@@ -331,13 +381,35 @@ def api_merge_persons(req: MergeRequest):
 
 @app.delete("/api/persons/{person_id}")
 def api_delete_person(person_id: int, delete_faces: bool = False):
+    """
+    delete_faces=False (nút "Xoá người này"): chỉ gỡ tên/person, các khuôn
+    mặt trở về trạng thái "chưa đặt tên" — embedding + thumbnail vẫn giữ
+    nguyên, có thể gán lại cho người khác sau này.
+
+    delete_faces=True (nút "Khóa" / lock): XÓA VĨNH VIỄN — xoá luôn face
+    record (embedding) trong DB lẫn file thumbnail khuôn mặt (face_{id}.jpg)
+    trên đĩa. Không thể hoàn tác. Ảnh gốc trên máy không bị ảnh hưởng.
+    """
     conn = db.get_conn()
     try:
         if not db.get_person(conn, person_id):
             raise HTTPException(404, "Không tìm thấy người này")
+
+        deleted_thumbs = 0
+        if delete_faces:
+            faces = db.get_faces_for_person(conn, person_id)
+            for f in faces:
+                thumb_path = THUMBS_DIR / f"face_{f['id']}.jpg"
+                if thumb_path.exists():
+                    try:
+                        thumb_path.unlink()
+                        deleted_thumbs += 1
+                    except OSError:
+                        pass
+
         db.delete_person(conn, person_id, delete_faces=delete_faces)
         db.clear_rejected_pairs_for(conn, person_id)
-        return {"ok": True}
+        return {"ok": True, "deleted_thumbnails": deleted_thumbs}
     finally:
         conn.close()
 
@@ -644,10 +716,10 @@ def _ensure_face_thumb(conn, face_id: int):
 
 
 @app.get("/api/images")
-def api_list_images():
+def api_list_images(scan_root: Optional[str] = None):
     conn = db.get_conn()
     try:
-        images = db.list_all_images(conn)
+        images = db.list_all_images(conn, scan_root=scan_root)
         return [
             {"id": img["id"], "filename": img["filename"], "width": img["width"], "height": img["height"]}
             for img in images

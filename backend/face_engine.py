@@ -16,6 +16,7 @@ MAX_FACES_PER_IMAGE = 3
 # tính" (chấp nhận mặt hơi mờ). Giá trị này chỉ mang tính tương đối, có thể
 # cần điều chỉnh tuỳ chất lượng ảnh gốc.
 BLUR_THRESHOLD = 30.0
+SCORE_THRESHOLD = 0.6  # Ngưỡng confidence score của face detection (RetinaFace)
 
 _SHARPNESS_CHECK_SIZE = 160
 
@@ -72,7 +73,9 @@ class FaceEngine:
         self,
         img_bgr: np.ndarray,
         max_faces: int = MAX_FACES_PER_IMAGE,
+        score_threshold: float = SCORE_THRESHOLD,
         blur_threshold: float = BLUR_THRESHOLD,
+
     ):
         """
         Trả về danh sách face dict:
@@ -92,6 +95,8 @@ class FaceEngine:
             bbox = [float(v) for v in f.bbox.tolist()]
             area = max(0.0, bbox[2] - bbox[0]) * max(0.0, bbox[3] - bbox[1])
             sharpness = _face_sharpness(img_bgr, bbox)
+            if f.det_score < score_threshold:
+                continue
             candidates.append({
                 "bbox": bbox,
                 "det_score": float(f.det_score),

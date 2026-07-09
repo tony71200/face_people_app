@@ -6,6 +6,10 @@ const translations = {
     library: "Thư viện ảnh",
     nav_photos: "Ảnh",
     nav_people: "Con người",
+    nav_people_list: "Danh sách con người",
+    scope_all: "Toàn bộ",
+    scope_new: "Dữ liệu mới",
+    scope_new_disabled_msg: "Chưa có dữ liệu mới nào — hãy quét hoặc \"Thêm data mới\" trước.",
     feedback_btn: "Kiểm tra lại nhóm",
     organize_btn: "Tạo thư mục theo tên",
     recluster_btn: "Gộp lại (Reclustering)",
@@ -22,6 +26,8 @@ const translations = {
     placeholder_name: "Thêm tên...",
     merge_btn: "Gộp với người khác...",
     delete_person_btn: "Xoá người này",
+    lock_person_btn: "🔒 Khóa",
+    lock_person_tooltip: "Xoá vĩnh viễn dữ liệu nhận diện (embedding) và toàn bộ thumbnail khuôn mặt của người này khỏi database. Không thể hoàn tác.",
     scan_modal_title: "Quét thư mục ảnh",
     scan_modal_sub: "Nhập đường dẫn thư mục chứa ảnh trên máy bạn (hỗ trợ JPG, PNG, WEBP, HEIC).",
     folder_placeholder: "Ví dụ: C:\\Users\\Tony\\Pictures hoặc /home/tony/photos",
@@ -44,7 +50,7 @@ const translations = {
     feedback_done: "Đã kiểm tra hết! Không còn cặp nào cần xác nhận.",
     feedback_loading: "Đang tìm cặp tiếp theo...",
     organize_title: "Tạo thư mục theo tên",
-    organize_sub: 'Ảnh của mỗi người đã đặt tên sẽ được sắp xếp vào thư mục "Organized/&lt;Tên&gt;" ngay trong thư mục gốc đã quét, giữ nguyên cấu trúc thư mục con. Ảnh có nhiều người sẽ chỉ vào thư mục của người có khuôn mặt lớn nhất.',
+    organize_sub: 'Ảnh của mỗi người đã đặt tên sẽ được sắp xếp vào thư mục "<Tên>" ngay trong đúng thư mục con chứa ảnh gốc (giữ nguyên cấu trúc thư mục con, không tạo thư mục bao nào khác). Ảnh có nhiều người sẽ chỉ vào thư mục của người có khuôn mặt lớn nhất.',
     organize_confirm: "Bạn có chắc chắn muốn thực hiện thao tác này không?",
     organize_confirm_btn: "Thực hiện",
     organize_no_data: "Chưa có người nào được đặt tên để tổ chức ảnh.",
@@ -55,6 +61,9 @@ const translations = {
     organize_result_ok: (p, s) => `Hoàn tất: ${p} ảnh đã xử lý, ${s} ảnh bỏ qua (đã tồn tại hoặc không tìm thấy).`,
     organize_result_errors: (n) => ` Có ${n} lỗi xảy ra.`,
     confirm_delete_person: "Xoá người này? (Ảnh vẫn được giữ lại, chỉ bỏ gán tên người)",
+    confirm_lock_person: (name) => `Khóa và XÓA VĨNH VIỄN dữ liệu nhận diện của "${name}" khỏi database? Bao gồm toàn bộ embedding khuôn mặt + thumbnail. Ảnh gốc trên máy KHÔNG bị xóa. Hành động này KHÔNG THỂ hoàn tác. Tiếp tục?`,
+    lock_person_result: (n) => `Đã khóa: xóa vĩnh viễn dữ liệu và ${n} thumbnail khuôn mặt của người này.`,
+    error_lock_person: "Không khóa được người này.",
     alert_enter_folder: "Vui lòng nhập đường dẫn thư mục.",
     alert_scan_error: (msg) => `Lỗi khi bắt đầu quét: ${msg}`,
     alert_scan_failed: (msg) => `Lỗi khi quét: ${msg}`,
@@ -82,6 +91,11 @@ const translations = {
     error_generic: "Đã xảy ra lỗi. Vui lòng thử lại.",
     error_load_photos: "Không tải được danh sách ảnh.",
     error_load_people: "Không tải được danh sách người.",
+    people_list_title: "Danh sách con người",
+    people_list_sub: "Xem nhanh dạng danh sách. Chọn 1 người để xem toàn bộ đường dẫn ảnh gốc trên máy.",
+    person_paths_sub: "Đường dẫn ảnh gốc trên máy. Xanh = ảnh còn tồn tại. Xám gạch ngang = ảnh đã bị xoá/di chuyển khỏi vị trí này.",
+    person_paths_count: (exists, total) => `${exists}/${total} ảnh còn tồn tại trên máy.`,
+    error_load_person_paths: "Không tải được danh sách đường dẫn ảnh của người này.",
     error_person_detail: "Không tải được chi tiết người này.",
     error_save_name: "Không lưu được tên người.",
     error_delete_person: "Không xoá được người này.",
@@ -97,7 +111,7 @@ const translations = {
     error_browse_folder: "Không duyệt được thư mục này.",
     import_data_btn: "+ Thêm data mới",
     import_hint: "Sau khi quét xong, ảnh của người đã đặt tên trong folder này sẽ được tự động sắp xếp vào thư mục theo tên (vẫn nhận diện đúng người đã có từ trước, dù ở folder khác).",
-    import_organize_confirm: (n) => `Đã quét xong. Có ${n} ảnh của người đã đặt tên trong folder này sẽ được tổ chức vào thư mục "Organized/<Tên>". Tiếp tục?`,
+    import_organize_confirm: (n) => `Đã quét xong. Có ${n} ảnh của người đã đặt tên trong folder này sẽ được tổ chức vào thư mục theo tên người (ngay trong đúng thư mục con chứa ảnh gốc). Tiếp tục?`,
     import_no_named_data: "Đã quét xong, nhưng chưa có ảnh nào của người đã đặt tên trong folder này để tổ chức.",
     error_import_organize: "Quét xong nhưng không tổ chức được ảnh tự động.",
     cleanup_title: "Dọn dẹp dữ liệu thumbnail",
@@ -112,6 +126,10 @@ const translations = {
     library: "Photo Library",
     nav_photos: "Photos",
     nav_people: "People",
+    nav_people_list: "People list",
+    scope_all: "All",
+    scope_new: "New data",
+    scope_new_disabled_msg: "No new data yet — scan or use \"Import new data\" first.",
     feedback_btn: "Review groupings",
     organize_btn: "Organize into folders",
     recluster_btn: "Recluster",
@@ -128,6 +146,8 @@ const translations = {
     placeholder_name: "Add name...",
     merge_btn: "Merge with another person...",
     delete_person_btn: "Delete this person",
+    lock_person_btn: "🔒 Lock",
+    lock_person_tooltip: "Permanently delete this person's face recognition data (embeddings) and all face thumbnails from the database. Cannot be undone.",
     scan_modal_title: "Scan Photo Folder",
     scan_modal_sub: "Enter the path to a folder of photos on your computer (JPG, PNG, WEBP, HEIC supported).",
     folder_placeholder: "e.g. C:\\Users\\Tony\\Pictures or /home/tony/photos",
@@ -150,7 +170,7 @@ const translations = {
     feedback_done: "All checked! No more pairs to confirm.",
     feedback_loading: "Looking for the next pair...",
     organize_title: "Organize into Name Folders",
-    organize_sub: 'Photos of each named person will be sorted into an "Organized/&lt;Name&gt;" folder right inside the original scanned folder, keeping the original subfolder structure. Photos with multiple people will only go into the folder of the person with the largest face.',
+    organize_sub: 'Photos of each named person will be sorted into a "<Name>" folder right inside the same subfolder as the original photo (keeping the original subfolder structure, no extra wrapper folder). Photos with multiple people will only go into the folder of the person with the largest face.',
     organize_confirm: "Are you sure you want to do this?",
     organize_confirm_btn: "Proceed",
     organize_no_data: "No named people yet to organize photos for.",
@@ -161,6 +181,9 @@ const translations = {
     organize_result_ok: (p, s) => `Done: ${p} photos processed, ${s} skipped (already existed or missing).`,
     organize_result_errors: (n) => ` ${n} errors occurred.`,
     confirm_delete_person: "Delete this person? (Photos are kept, only the name assignment is removed)",
+    confirm_lock_person: (name) => `Lock and PERMANENTLY DELETE recognition data for "${name}" from the database? This includes all face embeddings + thumbnails. Original photos on disk are NOT deleted. This action CANNOT be undone. Continue?`,
+    lock_person_result: (n) => `Locked: permanently deleted data and ${n} face thumbnail(s) for this person.`,
+    error_lock_person: "Could not lock this person.",
     alert_enter_folder: "Please enter a folder path.",
     alert_scan_error: (msg) => `Error starting scan: ${msg}`,
     alert_scan_failed: (msg) => `Scan failed: ${msg}`,
@@ -188,6 +211,11 @@ const translations = {
     error_generic: "Something went wrong. Please try again.",
     error_load_photos: "Could not load photos.",
     error_load_people: "Could not load people.",
+    people_list_title: "People list",
+    people_list_sub: "Quick list view. Select a person to see all original photo paths on disk.",
+    person_paths_sub: "Original photo paths on disk. Green = photo still exists. Gray strikethrough = photo has been deleted/moved from this location.",
+    person_paths_count: (exists, total) => `${exists}/${total} photo(s) still exist on disk.`,
+    error_load_person_paths: "Could not load photo paths for this person.",
     error_person_detail: "Could not load this person's details.",
     error_save_name: "Could not save this person's name.",
     error_delete_person: "Could not delete this person.",
@@ -203,7 +231,7 @@ const translations = {
     error_browse_folder: "Could not browse this folder.",
     import_data_btn: "+ Import new data",
     import_hint: "After scanning, photos of already-named people in this folder will be automatically sorted into named folders (still correctly recognizing people already known, even from a different folder).",
-    import_organize_confirm: (n) => `Scan complete. ${n} photo(s) of already-named people in this folder will be organized into "Organized/<Name>" folders. Continue?`,
+    import_organize_confirm: (n) => `Scan complete. ${n} photo(s) of already-named people in this folder will be organized into per-person folders (right inside the original subfolder). Continue?`,
     import_no_named_data: "Scan complete, but there are no photos of named people in this folder to organize yet.",
     error_import_organize: "Scan finished but automatic organizing failed.",
     cleanup_title: "Clean up thumbnail data",
@@ -237,6 +265,7 @@ function applyLanguage() {
   });
   document.getElementById("langToggle").checked = currentLang === "en";
   if (currentView === "photos") document.getElementById("viewTitle").textContent = t("all_photos");
+  else if (currentView === "people-list") document.getElementById("viewTitle").textContent = t("nav_people_list");
   else document.getElementById("viewTitle").textContent = t("people_title");
   if (currentView === "people") loadPeopleStats();
   else hidePeopleStats();
@@ -252,6 +281,48 @@ document.getElementById("langToggle").addEventListener("change", (e) => {
 // ---------------- State ----------------
 let currentView = "photos";
 let currentPersonId = null;
+
+// ---------------- Data scope (Toàn bộ / Dữ liệu mới) ----------------
+// dataScopeMode áp dụng chung cho cả 3 view (Ảnh, Con người, Danh sách con
+// người) — khi = "new", mọi API call kèm scan_root = lastScanRoot để chỉ
+// lấy dữ liệu của lần quét gần nhất (bất kể "Quét thư mục" hay "Thêm data
+// mới"). lastScanRoot được lấy 1 lần từ backend lúc khởi động app.
+let dataScopeMode = "all"; // "all" | "new"
+let lastScanRoot = null;
+
+async function fetchLastScanRoot() {
+  try {
+    const data = await apiGet("/scan/last-root");
+    lastScanRoot = data.scan_root || null;
+  } catch (e) {
+    lastScanRoot = null;
+  }
+}
+
+function scopeQuery() {
+  if (dataScopeMode === "new" && lastScanRoot) {
+    return `?scan_root=${encodeURIComponent(lastScanRoot)}`;
+  }
+  return "";
+}
+
+function setDataScopeMode(mode) {
+  if (mode === "new" && !lastScanRoot) {
+    alert(t("scope_new_disabled_msg"));
+    return;
+  }
+  dataScopeMode = mode;
+  document.querySelectorAll(".data-scope-toggle .scope-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.scope === mode);
+  });
+  if (currentView === "photos") loadPhotos();
+  else if (currentView === "people") { loadPeopleStats(); loadPeople(); }
+  else if (currentView === "people-list") loadPeopleListView();
+}
+
+document.querySelectorAll(".data-scope-toggle .scope-btn").forEach((btn) => {
+  btn.addEventListener("click", () => setDataScopeMode(btn.dataset.scope));
+});
 let scanPollTimer = null;
 
 // ---------------- Helpers ----------------
@@ -311,7 +382,7 @@ async function loadPeopleStats() {
   }
 
   const stats = document.getElementById("peopleStats");
-  const data = await safeRun(() => apiGet("/persons/stats"), t("error_load_people"));
+  const data = await safeRun(() => apiGet(`/persons/stats${scopeQuery()}`), t("error_load_people"));
   if (!data || currentView !== "people") {
     hidePeopleStats();
     return;
@@ -344,6 +415,11 @@ function showView(view, forceReload) {
     document.getElementById("viewTitle").textContent = t("people_title");
     loadPeopleStats();
     if (changed) loadPeople();
+  } else if (view === "people-list") {
+    document.getElementById("view-people-list").classList.add("active");
+    document.getElementById("viewTitle").textContent = t("nav_people_list");
+    hidePeopleStats();
+    if (changed) loadPeopleListView();
   } else if (view === "person-detail") {
     document.getElementById("view-person-detail").classList.add("active");
     document.getElementById("viewTitle").textContent = t("people_title");
@@ -359,7 +435,7 @@ async function loadPhotos() {
     const grid = document.getElementById("photosGrid");
     const empty = document.getElementById("photosEmpty");
     grid.innerHTML = "";
-    const images = await apiGet("/images");
+    const images = await apiGet(`/images${scopeQuery()}`);
     empty.style.display = images.length === 0 ? "block" : "none";
     for (const img of images) {
       const tile = el("div", "photo-tile");
@@ -385,14 +461,14 @@ document.getElementById("lightbox").addEventListener("click", (e) => {
   if (e.target.id === "lightbox") document.getElementById("lightbox").style.display = "none";
 });
 
-// ---------------- People view ----------------
+// ---------------- People view (grid) ----------------
 async function loadPeople() {
   loadPeopleStats();
   await safeRun(async () => {
     const grid = document.getElementById("peopleGrid");
     const empty = document.getElementById("peopleEmpty");
     grid.innerHTML = "";
-    const persons = await apiGet("/persons");
+    const persons = await apiGet(`/persons${scopeQuery()}`);
     empty.style.display = persons.length === 0 ? "block" : "none";
     for (const p of persons) {
       const card = el("div", "person-card");
@@ -408,6 +484,64 @@ async function loadPeople() {
     }
   }, t("error_load_people"));
 }
+
+// ---------------- People List view (danh sách + đường dẫn ảnh) ----------------
+// View riêng, độc lập với lưới "Con người" — mỗi hàng chỉ có avatar nhỏ +
+// tên + số ảnh (không thumbnail nào khác). Chọn 1 người sẽ mở modal hiển
+// thị đường dẫn ảnh dạng TEXT THUẦN, không tốn thêm dung lượng data/thumbs.
+async function loadPeopleListView() {
+  await safeRun(async () => {
+    const container = document.getElementById("peopleListContainer");
+    const empty = document.getElementById("peopleListEmpty");
+    container.innerHTML = "";
+    const persons = await apiGet(`/persons${scopeQuery()}`);
+    empty.style.display = persons.length === 0 ? "block" : "none";
+    for (const p of persons) {
+      const row = el("div", "people-list-row");
+      const avatar = el("img", "people-list-avatar");
+      avatar.src = `${API}/faces/${p.representative_face_id}/thumb`;
+      avatar.loading = "lazy";
+      const name = el("div", "people-list-name", p.name ? escapeHtml(p.name) : t("unnamed"));
+      const count = el("div", "people-list-count", `${p.photo_count} ${t("photos_suffix")}`);
+      row.appendChild(avatar);
+      row.appendChild(name);
+      row.appendChild(count);
+      row.addEventListener("click", () => openPersonPaths(p));
+      container.appendChild(row);
+    }
+  }, t("error_load_people"));
+}
+
+const personPathsModal = document.getElementById("personPathsModal");
+async function openPersonPaths(person) {
+  await safeRun(async () => {
+    document.getElementById("personPathsTitle").textContent = person.name || t("unnamed");
+    personPathsModal.style.display = "flex";
+    const listEl = document.getElementById("personPathsList");
+    const countEl = document.getElementById("personPathsCount");
+    listEl.innerHTML = "";
+    countEl.textContent = "...";
+
+    const paths = await apiGet(`/persons/${person.id}/paths`);
+    const existsCount = paths.filter((row) => row.exists).length;
+    countEl.textContent = t("person_paths_count", existsCount, paths.length);
+
+    for (const row of paths) {
+      const line = el(
+        "div",
+        `path-line ${row.exists ? "path-exists" : "path-missing"}`,
+        escapeHtml(row.path || "")
+      );
+      listEl.appendChild(line);
+    }
+  }, t("error_load_person_paths"));
+}
+document.getElementById("closePersonPaths").addEventListener("click", () => {
+  personPathsModal.style.display = "none";
+});
+personPathsModal.addEventListener("click", (e) => {
+  if (e.target.id === "personPathsModal") personPathsModal.style.display = "none";
+});
 
 async function openPersonDetail(personId) {
   await safeRun(async () => {
@@ -459,6 +593,25 @@ document.getElementById("deletePersonBtn").addEventListener("click", async () =>
     t("error_delete_person")
   );
   if (deleted !== null) {
+    showView("people");
+    loadPeopleStats();
+  }
+});
+
+// "Khóa" (lock): xoá VĨNH VIỄN embedding + thumbnail khuôn mặt của người
+// này khỏi database (khác với "Xoá người này" ở trên, vốn chỉ bỏ gán tên
+// và vẫn giữ lại dữ liệu khuôn mặt để có thể gán lại sau này).
+document.getElementById("lockPersonBtn").addEventListener("click", async () => {
+  const nameInput = document.getElementById("personNameInput").value.trim();
+  const personLabel = nameInput || t("unnamed");
+  if (!confirm(t("confirm_lock_person", personLabel))) return;
+
+  const result = await safeRun(
+    () => apiJson("DELETE", `/persons/${currentPersonId}?delete_faces=true`),
+    t("error_lock_person")
+  );
+  if (result !== null) {
+    alert(t("lock_person_result", result.deleted_thumbnails || 0));
     showView("people");
     loadPeopleStats();
   }
@@ -572,6 +725,22 @@ async function organizeAfterImport(scanRoot) {
   if (currentView === "photos") loadPhotos();
 }
 
+// Sau khi "Thêm data mới" (quét + tổ chức xong), hỏi xác nhận có muốn dọn
+// dẹp thumbnail thừa ngay không (chỉ giữ ảnh đại diện người đã đặt tên) để
+// giảm dung lượng data/thumbs sau khi thêm nhiều ảnh mới.
+async function maybeCleanupAfterImport() {
+  if (!confirm(t("cleanup_confirm"))) return;
+  const result = await safeRun(
+    () => apiJson("POST", "/cleanup/thumbs", {}),
+    t("error_cleanup")
+  );
+  if (!result) return;
+  const mb = (result.freed_bytes / (1024 * 1024)).toFixed(1);
+  alert(t("cleanup_result", result.deleted_count, mb));
+  showView(currentView, true);
+  loadPeopleStats();
+}
+
 function pollScanStatus() {
   clearInterval(scanPollTimer);
   scanPollTimer = setInterval(async () => {
@@ -604,6 +773,7 @@ function pollScanStatus() {
       } else {
         const wasImportFlow = isImportFlow;
         const scanRoot = status.scan_root;
+        lastScanRoot = scanRoot || lastScanRoot;
         setTimeout(async () => {
           scanModal.style.display = "none";
           showView(currentView, true);
@@ -611,6 +781,7 @@ function pollScanStatus() {
           isImportFlow = false;
           if (wasImportFlow) {
             await organizeAfterImport(scanRoot);
+            await maybeCleanupAfterImport();
           }
         }, 800);
       }
@@ -683,6 +854,7 @@ document.getElementById("feedbackBtn").addEventListener("click", () => {
 document.getElementById("feedbackClose").addEventListener("click", () => {
   feedbackModal.style.display = "none";
   if (currentView === "people") loadPeople();
+  if (currentView === "people-list") loadPeopleListView();
   if (currentView === "person-detail" && currentPersonId) openPersonDetail(currentPersonId);
 });
 
@@ -938,6 +1110,7 @@ async function pollReclusterStatus() {
       stopReclusterPolling();
       loadPeopleStats();
       if (currentView === "people") loadPeople();
+      if (currentView === "people-list") loadPeopleListView();
     }
   } catch (e) {
     stopReclusterPolling();
@@ -989,4 +1162,5 @@ document.getElementById("confirmRecluster").addEventListener("click", async () =
 
 // ---------------- Init ----------------
 applyLanguage();
+fetchLastScanRoot();
 showView("photos");

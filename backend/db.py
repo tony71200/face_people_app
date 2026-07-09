@@ -71,6 +71,11 @@ def init_db():
             value TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS organized_paths (
+            path TEXT PRIMARY KEY,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
         CREATE INDEX IF NOT EXISTS idx_faces_person ON faces(person_id);
         CREATE INDEX IF NOT EXISTS idx_faces_image ON faces(image_id);
         """
@@ -91,13 +96,34 @@ def get_image_by_path(conn, path: str):
     return conn.execute("SELECT * FROM images WHERE path = ?", (path,)).fetchone()
 
 
+# ---------- Organized paths (loại trừ ảnh đã copy ra khỏi lần quét sau) ----------
+# Vì thư mục đích khi "Tạo thư mục theo tên" giờ mang tên người (không còn
+# nằm dưới 1 thư mục cố định như "Organized" trước đây), không thể loại trừ
+# bằng tên thư mục cố định nữa. Thay vào đó, mỗi khi COPY 1 ảnh ra thư mục
+# người, đường dẫn đích được ghi vào đây; lần quét sau sẽ bỏ qua các đường
+# dẫn này để tránh quét trùng (không áp dụng cho MOVE, vì move chỉ cập nhật
+# lại path của chính ảnh đó, không tạo file mới nào).
+
+def add_organized_path(conn, path: str, commit=True):
+    conn.execute(
+        "INSERT OR IGNORE INTO organized_paths (path) VALUES (?)", (path,)
+    )
+    if commit:
+        conn.commit()
+
+
+def get_organized_paths_set(conn) -> set:
+    rows = conn.execute("SELECT path FROM organized_paths").fetchall()
+    return {r["path"] for r in rows}
+
+
 def upsert_image(conn, path, filename, width, height, mtime, scan_root=None, rel_path=None):
     """
     rel_path là đường dẫn TƯƠNG ĐỐI GỐC (tính lúc mới quét, trước khi có bất
     kỳ thao tác move nào) so với scan_root. Một khi đã có rel_path, hàm này
     KHÔNG BAO GIỜ ghi đè lại nó nữa — kể cả khi ảnh sau đó bị move sang vị
-    trí khác (path đổi) — để tránh lỗi tính rel_path chồng lấn lên thư mục
-    "Organized" đã tạo trước đó (gây lồng Organized/Organized/...).
+    trí khác (path đổi) — để build_plan() luôn dựng lại đúng cấu trúc
+    subfolder gốc dù ảnh đã bị move đi đâu trước đó.
     """
     existing = get_image_by_path(conn, path)
     if existing and existing["mtime"] == mtime:
@@ -152,7 +178,12 @@ def update_image_path(conn, image_id, new_path):
     conn.commit()
 
 
-def list_all_images(conn):
+def list_all_images(conn, scan_root: str = None):
+    if scan_root:
+        return conn.execute(
+            "SELECT * FROM images WHERE scan_root=? ORDER BY mtime DESC",
+            (scan_root,),
+        ).fetchall()
     return conn.execute("SELECT * FROM images ORDER BY mtime DESC").fetchall()
 
 
@@ -263,36 +294,70 @@ def get_person(conn, person_id):
     return conn.execute("SELECT * FROM persons WHERE id=?", (person_id,)).fetchone()
 
 
-def list_persons(conn):
-    rows = conn.execute(
-        """
-        SELECT p.*, COUNT(f.id) AS face_count, COUNT(DISTINCT f.image_id) AS photo_count
-        FROM persons p
-        LEFT JOIN faces f ON f.person_id = p.id
-        GROUP BY p.id
-        HAVING face_count > 0
-        ORDER BY photo_count DESC, face_count DESC
-        """
-    ).fetchall()
-    return rows
-
-
-def get_person_stats(conn):
-    """Return person counts compatible with list_persons (only people with faces)."""
-    row = conn.execute(
-        """
-        SELECT
-            COUNT(*) AS total,
-            COALESCE(SUM(CASE WHEN name IS NOT NULL AND TRIM(name) != '' THEN 1 ELSE 0 END), 0) AS named
-        FROM (
-            SELECT p.id, p.name, COUNT(f.id) AS face_count
+def list_persons(conn, scan_root: str = None):
+    if scan_root:
+        rows = conn.execute(
+            """
+            SELECT p.*, COUNT(f.id) AS face_count, COUNT(DISTINCT f.image_id) AS photo_count
+            FROM persons p
+            JOIN faces f ON f.person_id = p.id
+            JOIN images i ON f.image_id = i.id
+            WHERE i.scan_root = ?
+            GROUP BY p.id
+            HAVING face_count > 0
+            ORDER BY photo_count DESC, face_count DESC
+            """,
+            (scan_root,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT p.*, COUNT(f.id) AS face_count, COUNT(DISTINCT f.image_id) AS photo_count
             FROM persons p
             LEFT JOIN faces f ON f.person_id = p.id
             GROUP BY p.id
             HAVING face_count > 0
-        )
-        """
-    ).fetchone()
+            ORDER BY photo_count DESC, face_count DESC
+            """
+        ).fetchall()
+    return rows
+
+
+def get_person_stats(conn, scan_root: str = None):
+    """Return person counts compatible with list_persons (only people with faces)."""
+    if scan_root:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS total,
+                COALESCE(SUM(CASE WHEN name IS NOT NULL AND TRIM(name) != '' THEN 1 ELSE 0 END), 0) AS named
+            FROM (
+                SELECT p.id, p.name, COUNT(f.id) AS face_count
+                FROM persons p
+                JOIN faces f ON f.person_id = p.id
+                JOIN images i ON f.image_id = i.id
+                WHERE i.scan_root = ?
+                GROUP BY p.id
+                HAVING face_count > 0
+            )
+            """,
+            (scan_root,),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS total,
+                COALESCE(SUM(CASE WHEN name IS NOT NULL AND TRIM(name) != '' THEN 1 ELSE 0 END), 0) AS named
+            FROM (
+                SELECT p.id, p.name, COUNT(f.id) AS face_count
+                FROM persons p
+                LEFT JOIN faces f ON f.person_id = p.id
+                GROUP BY p.id
+                HAVING face_count > 0
+            )
+            """
+        ).fetchone()
     total = row["total"]
     named = row["named"]
     return {"total": total, "named": named, "unnamed": total - named}
@@ -398,6 +463,11 @@ def get_named_faces_with_area(conn):
 def get_all_settings(conn):
     rows = conn.execute("SELECT key, value FROM settings").fetchall()
     return {r["key"]: r["value"] for r in rows}
+
+
+def get_setting(conn, key: str, default=None):
+    row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else default
 
 
 def set_setting(conn, key: str, value):
