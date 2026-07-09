@@ -40,6 +40,11 @@ const translations = {
     cancel_btn: "Huỷ",
     merge_modal_title: "Gộp vào người nào?",
     merge_modal_sub: "Chọn người mà bạn muốn gộp vào (mọi ảnh sẽ được chuyển sang người đó).",
+    multi_select_label: "Chọn nhiều",
+    multi_merge_btn: "Gộp vào người khác...",
+    multi_select_count: (n) => `Đã chọn ${n} nhóm`,
+    multi_select_hint: "Bật Chọn nhiều rồi bấm các avatar để chọn ít nhất 2 nhóm cần gộp.",
+    confirm_merge_people: (sources, target) => `Bạn có chắc chắn muốn gộp ${sources} vào "${target}" không?`,
     photos_suffix: "ảnh",
     unnamed: "Chưa đặt tên",
     unnamed_count: (n) => `${n} ảnh (chưa đặt tên)`,
@@ -160,6 +165,11 @@ const translations = {
     cancel_btn: "Cancel",
     merge_modal_title: "Merge into which person?",
     merge_modal_sub: "Pick the person to merge into (all photos will move to that person).",
+    multi_select_label: "Multi-Select",
+    multi_merge_btn: "Merge into another person...",
+    multi_select_count: (n) => `${n} group${n === 1 ? "" : "s"} selected`,
+    multi_select_hint: "Turn on Multi-Select, then click avatars to select at least 2 groups to merge.",
+    confirm_merge_people: (sources, target) => `Are you sure you want to merge ${sources} into "${target}"?`,
     photos_suffix: "photos",
     unnamed: "Unnamed",
     unnamed_count: (n) => `${n} photos (unnamed)`,
@@ -281,6 +291,8 @@ document.getElementById("langToggle").addEventListener("change", (e) => {
 // ---------------- State ----------------
 let currentView = "photos";
 let currentPersonId = null;
+let peopleMultiSelect = false;
+const selectedPeople = new Map();
 
 // ---------------- Data scope (Toàn bộ / Dữ liệu mới) ----------------
 // dataScopeMode áp dụng chung cho cả 3 view (Ảnh, Con người, Danh sách con
@@ -462,6 +474,38 @@ document.getElementById("lightbox").addEventListener("click", (e) => {
 });
 
 // ---------------- People view (grid) ----------------
+function personLabel(person) {
+  return person.name || t("unnamed_count", person.face_count);
+}
+
+function updateMultiSelectControls() {
+  const checkbox = document.getElementById("peopleMultiSelectCheck");
+  const mergeBtn = document.getElementById("multiMergeBtn");
+  const count = document.getElementById("multiSelectCount");
+  if (!checkbox || !mergeBtn || !count) return;
+  checkbox.checked = peopleMultiSelect;
+  mergeBtn.disabled = selectedPeople.size < 2;
+  count.textContent = peopleMultiSelect && selectedPeople.size > 0 ? t("multi_select_count", selectedPeople.size) : "";
+}
+
+function setPeopleMultiSelect(enabled) {
+  peopleMultiSelect = enabled;
+  selectedPeople.clear();
+  document.querySelectorAll(".person-card.selected").forEach((card) => card.classList.remove("selected"));
+  updateMultiSelectControls();
+}
+
+function togglePersonSelection(person, card) {
+  if (selectedPeople.has(person.id)) {
+    selectedPeople.delete(person.id);
+    card.classList.remove("selected");
+  } else {
+    selectedPeople.set(person.id, person);
+    card.classList.add("selected");
+  }
+  updateMultiSelectControls();
+}
+
 async function loadPeople() {
   loadPeopleStats();
   await safeRun(async () => {
@@ -470,18 +514,28 @@ async function loadPeople() {
     grid.innerHTML = "";
     const persons = await apiGet(`/persons${scopeQuery()}`);
     empty.style.display = persons.length === 0 ? "block" : "none";
+    selectedPeople.forEach((_, id) => {
+      if (!persons.some((p) => p.id === id)) selectedPeople.delete(id);
+    });
     for (const p of persons) {
       const card = el("div", "person-card");
+      if (selectedPeople.has(p.id)) card.classList.add("selected");
       const avatar = el("img", "person-avatar");
       avatar.src = `${API}/faces/${p.representative_face_id}/thumb`;
+      const checkmark = el("div", "person-select-check", "✓");
       const name = el("div", "person-card-name", p.name ? escapeHtml(p.name) : t("unnamed"));
       const count = el("div", "person-card-count", `${p.photo_count} ${t("photos_suffix")}`);
       card.appendChild(avatar);
+      card.appendChild(checkmark);
       card.appendChild(name);
       card.appendChild(count);
-      card.addEventListener("click", () => openPersonDetail(p.id));
+      card.addEventListener("click", () => {
+        if (peopleMultiSelect) togglePersonSelection(p, card);
+        else openPersonDetail(p.id);
+      });
       grid.appendChild(card);
     }
+    updateMultiSelectControls();
   }, t("error_load_people"));
 }
 
@@ -618,34 +672,64 @@ document.getElementById("lockPersonBtn").addEventListener("click", async () => {
 });
 
 // ---------------- Merge ----------------
-document.getElementById("mergeBtn").addEventListener("click", async () => {
+async function openMergePicker(sourcePeople, afterMerge) {
   await safeRun(async () => {
+    if (!sourcePeople.length) return;
+    const sourceIds = new Set(sourcePeople.map((p) => p.id));
     const persons = await apiGet("/persons");
     const list = document.getElementById("mergeList");
     list.innerHTML = "";
     for (const p of persons) {
-      if (p.id === currentPersonId) continue;
+      if (sourceIds.has(p.id)) continue;
       const item = el("div", "merge-list-item");
       const img = el("img");
       img.src = `${API}/faces/${p.representative_face_id}/thumb`;
-      const label = el("span", null, p.name ? escapeHtml(p.name) : t("unnamed_count", p.face_count));
+      const label = el("span", null, escapeHtml(personLabel(p)));
       item.appendChild(img);
       item.appendChild(label);
       item.addEventListener("click", async () => {
-        const merged = await safeRun(
-          () => apiJson("POST", "/persons/merge", { source_id: currentPersonId, target_id: p.id }),
-          t("error_merge_people")
-        );
-        if (merged === null) return;
+        const sourceNames = sourcePeople.map(personLabel).join(", ");
+        if (!confirm(t("confirm_merge_people", sourceNames, personLabel(p)))) return;
+
+        for (const source of sourcePeople) {
+          const merged = await safeRun(
+            () => apiJson("POST", "/persons/merge", { source_id: source.id, target_id: p.id }),
+            t("error_merge_people")
+          );
+          if (merged === null) return;
+        }
         document.getElementById("mergeModal").style.display = "none";
         loadPeopleStats();
-        openPersonDetail(p.id);
+        if (afterMerge) afterMerge(p);
       });
       list.appendChild(item);
     }
     document.getElementById("mergeModal").style.display = "flex";
   }, t("error_merge_people"));
+}
+
+document.getElementById("mergeBtn").addEventListener("click", async () => {
+  const persons = await apiGet("/persons");
+  const current = persons.find((p) => p.id === currentPersonId);
+  if (!current) return;
+  openMergePicker([current], (target) => openPersonDetail(target.id));
 });
+
+document.getElementById("peopleMultiSelectCheck").addEventListener("change", (e) => {
+  setPeopleMultiSelect(e.target.checked);
+});
+
+document.getElementById("multiMergeBtn").addEventListener("click", async () => {
+  if (selectedPeople.size < 2) {
+    alert(t("multi_select_hint"));
+    return;
+  }
+  openMergePicker(Array.from(selectedPeople.values()), () => {
+    setPeopleMultiSelect(false);
+    loadPeople();
+  });
+});
+
 document.getElementById("cancelMerge").addEventListener("click", () => {
   document.getElementById("mergeModal").style.display = "none";
 });

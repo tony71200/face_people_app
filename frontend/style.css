@@ -262,12 +262,35 @@ html, body {
 .photo-tile:hover img { transform: scale(1.04); }
 
 /* ---------- People grid (Apple Photos style: circular avatars) ---------- */
+
+.people-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.people-toolbar .data-scope-toggle { margin-bottom: 0; }
+
+.multi-select-toggle {
+  margin: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.04);
+}
+.multi-select-count {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
 .people-grid {
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 20px;
 }
 
 .person-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -277,6 +300,28 @@ html, body {
   border-radius: var(--radius-md);
 }
 .person-card:hover { background: rgba(0,0,0,0.04); }
+.person-card.selected { background: rgba(0,113,227,0.12); }
+.person-card.selected .person-avatar {
+  outline: 4px solid var(--accent);
+  outline-offset: 2px;
+}
+.person-select-check {
+  position: absolute;
+  top: 14px;
+  right: 22px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: white;
+  font-size: 16px;
+  font-weight: 700;
+  box-shadow: var(--shadow);
+}
+.person-card.selected .person-select-check { display: flex; }
 
 .person-avatar {
   width: 120px;
