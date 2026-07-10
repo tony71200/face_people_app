@@ -85,12 +85,15 @@
           <button class="scope-btn active" data-scope="all" data-i18n="scope_all">Toàn bộ</button>
           <button class="scope-btn" data-scope="new" data-i18n="scope_new">Dữ liệu mới</button>
         </div>
-        <label class="checkbox-row multi-select-toggle">
-          <input type="checkbox" id="peopleMultiSelectCheck">
-          <span data-i18n="multi_select_label">Chọn nhiều</span>
-        </label>
-        <button id="multiMergeBtn" class="btn-secondary" data-i18n="multi_merge_btn" disabled>Gộp vào người khác...</button>
-        <span id="multiSelectCount" class="multi-select-count"></span>
+        <div class="people-toolbar-actions">
+          <label class="multi-select-toggle">
+            <input type="checkbox" id="peopleMultiSelectCheck">
+            <span class="multi-select-box" aria-hidden="true"></span>
+            <span data-i18n="multi_select_label">Chọn nhiều</span>
+          </label>
+          <button id="multiMergeBtn" class="btn-secondary multi-merge-btn" data-i18n="multi_merge_btn" disabled>Gộp vào người khác...</button>
+          <span id="multiSelectCount" class="multi-select-count"></span>
+        </div>
       </div>
       <div id="peopleGrid" class="grid people-grid"></div>
       <div id="peopleEmpty" class="empty-state" style="display:none">
