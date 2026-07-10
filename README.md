@@ -1,25 +1,42 @@
-# Face People App — Local Photo App (giống People trong Google/Apple Photos)
+# Face People App
 
-Ứng dụng web chạy **hoàn toàn local trên máy bạn**, quét một thư mục ảnh,
-nhận diện khuôn mặt, tự động gom nhóm ảnh theo từng người, và cho bạn xem/đặt
-tên/gộp/sửa giống tính năng "People" của Google Photos hay Apple Photos.
+Face People App là ứng dụng web chạy local để quản lý thư viện ảnh cá nhân theo khuôn mặt. App quét ảnh trên máy, nhận diện khuôn mặt, gom các khuôn mặt thành từng nhóm người, cho phép đặt tên, gộp/tách/chỉnh nhóm, xem đường dẫn ảnh gốc, và tổ chức ảnh vào thư mục theo tên người.
 
-## Pipeline (theo đúng 5 phần đã trao đổi)
+Ứng dụng được thiết kế cho trường hợp dùng riêng trên máy cá nhân: backend FastAPI đọc trực tiếp thư mục ảnh local, frontend là giao diện web kiểu Apple Photos, dữ liệu nằm trong SQLite và thư mục thumbnail local.
 
-| Bước | Chức năng | Công nghệ dùng |
+## Tính năng chính
+
+- **Ảnh**: xem toàn bộ ảnh đã quét ở dạng lưới thumbnail.
+- **Con người**: xem các nhóm người bằng avatar tròn, đặt tên từng người, xem toàn bộ ảnh của một người.
+- **Chọn nhiều nhóm người**: trong tab **Con người**, bật **Chọn nhiều / Multi-Select**, chọn nhiều avatar rồi **Gộp vào người khác...** để gộp nhiều nhóm vào một người đích. App luôn hỏi xác nhận trước khi gộp.
+- **Danh sách con người**: xem dạng danh sách nhẹ hơn và mở danh sách đường dẫn ảnh gốc trên máy.
+- **Toàn bộ / Dữ liệu mới**: lọc ảnh/người theo toàn bộ database hoặc chỉ lần quét gần nhất.
+- **Kiểm tra lại nhóm**: feedback loop gợi ý các cặp người có thể là cùng một người để bạn xác nhận gộp hoặc từ chối.
+- **Gộp lại (Reclustering)**: tự động gộp các cặp đủ giống theo ngưỡng hiện tại, có trạng thái chạy nền, log, nút yêu cầu dừng, và cơ chế bỏ qua xung đột khi cả hai người đều đã có tên khác nhau.
+- **Cài đặt gom nhóm**: chỉnh ngưỡng nhận diện/gom nhóm ngay trong UI.
+- **Tạo thư mục theo tên**: copy hoặc move ảnh của người đã đặt tên vào thư mục tên người ngay trong cấu trúc thư mục gốc.
+- **Thêm data mới**: quét thư mục mới, tự tổ chức ảnh của người đã biết trong thư mục đó, rồi có thể dọn thumbnail thừa.
+- **Dọn dẹp thumbnail**: xoá thumbnail không cần thiết, giữ lại ảnh đại diện của người đã đặt tên; thumbnail khác sẽ tự tạo lại khi cần.
+- **Khóa người**: xoá vĩnh viễn dữ liệu nhận diện và thumbnail khuôn mặt của một người khỏi database, không xoá ảnh gốc.
+- **VI / EN**: chuyển đổi giao diện tiếng Việt và tiếng Anh.
+
+## Pipeline nhận diện khuôn mặt
+
+| Bước | Nội dung | Thành phần |
 |---|---|---|
-| 1. Detection | Tìm khuôn mặt trong ảnh | RetinaFace (qua InsightFace `buffalo_l`) |
-| 2. Alignment | Chuẩn hoá góc mặt | Tự động bên trong InsightFace |
-| 3. Embedding | Vector đặc trưng 512-d | ArcFace (qua InsightFace `buffalo_l`) |
-| 4. Clustering | Gom mặt thành người | Centroid-matching (incremental) + DBSCAN (cosine) |
-| 5. Feedback loop | Sửa sai, học theo người dùng | API rename / merge / split |
+| 1 | Phát hiện khuôn mặt | InsightFace RetinaFace (`buffalo_l`) |
+| 2 | Căn chỉnh khuôn mặt | InsightFace |
+| 3 | Tạo embedding | ArcFace 512 chiều (`buffalo_l`) |
+| 4 | Gom nhóm | So khớp centroid + DBSCAN cosine |
+| 5 | Hiệu chỉnh bằng người dùng | Rename, merge, feedback, recluster, reassign |
 
 ## Yêu cầu hệ thống
 
-- **Python 3.10 trở lên** (dùng cú pháp `int | None`)
-- GPU NVIDIA + CUDA đã cài driver, nếu muốn chạy nhanh bằng `onnxruntime-gpu`
-  (nếu không có, app tự động rơi về CPU, vẫn chạy được, chỉ chậm hơn)
-- Khoảng vài trăm MB dung lượng cho model InsightFace (tự tải lần đầu)
+- Python 3.10 trở lên.
+- Trình duyệt hiện đại trên cùng máy đang chạy backend.
+- Khuyến nghị GPU NVIDIA + CUDA nếu muốn xử lý nhanh với `onnxruntime-gpu`.
+- Nếu không có GPU/CUDA phù hợp, có thể dùng CPU bằng `onnxruntime`.
+- Lần chạy đầu cần mạng để InsightFace tải model `buffalo_l` về `~/.insightface/models/`.
 
 ## Cài đặt
 
@@ -27,32 +44,21 @@ tên/gộp/sửa giống tính năng "People" của Google Photos hay Apple Phot
 cd face_people_app/backend
 python -m venv .venv
 
-# Windows:
+# Windows
 .venv\Scripts\activate
-# macOS/Linux:
+
+# macOS/Linux
 source .venv/bin/activate
 
 pip install -r requirements.txt
 ```
 
-### Lưu ý về `onnxruntime-gpu`
-
-`onnxruntime-gpu` cần đúng phiên bản CUDA Toolkit / cuDNN tương thích. Nếu khi
-chạy bạn thấy log `"Không dùng được GPU"`, hoặc cài `onnxruntime-gpu` bị lỗi:
+Nếu `onnxruntime-gpu` không tương thích CUDA/cuDNN trên máy của bạn, chuyển sang bản CPU:
 
 ```bash
 pip uninstall onnxruntime-gpu
 pip install onnxruntime
 ```
-
-App vẫn hoạt động bình thường trên CPU, chỉ xử lý ảnh chậm hơn (vài trăm ảnh
-đầu tiên có thể mất vài phút do phải tải model buffalo_l lần đầu tiên).
-
-### Model InsightFace (buffalo_l)
-
-Lần chạy đầu tiên, `insightface` sẽ **tự động tải model** `buffalo_l`
-(~300MB) về `~/.insightface/models/`. Máy bạn cần có kết nối mạng ở lần chạy
-đầu tiên đó. Sau đó có thể chạy hoàn toàn offline.
 
 ## Chạy ứng dụng
 
@@ -61,183 +67,179 @@ cd face_people_app/backend
 python main.py
 ```
 
-Sau đó mở trình duyệt tại:
+Mở trình duyệt tại:
 
-```
+```text
 http://127.0.0.1:8000
 ```
 
-## Cách dùng
+Không expose app ra internet nếu chưa thêm xác thực người dùng.
 
-1. Nhấn **"+ Quét thư mục"** ở sidebar. Bạn có thể tự gõ đường dẫn, hoặc
-   bấm nút icon thư mục bên cạnh ô nhập để mở **dialog chọn thư mục** ngay
-   trên máy bạn (vì đây là app local, backend liệt kê thư mục trực tiếp
-   trên máy đang chạy server — không dùng `<input type=file>` của trình
-   duyệt vì cách đó không lấy được đường dẫn thật).
-2. App sẽ quét từng ảnh, phát hiện khuôn mặt, tính embedding, và tự động
-   gom nhóm theo người. Có thanh tiến độ hiển thị trực tiếp.
-3. Vào tab **"Con người"** để xem các cụm người được tạo ra.
-4. Click vào 1 người để:
-   - Đặt tên (tự lưu khi bạn gõ xong, không cần bấm nút)
-   - Xem tất cả ảnh của người đó
-   - **Gộp** với một người khác nếu 2 cụm thực ra là cùng 1 người
-   - **Xoá** người này (ảnh vẫn giữ nguyên, chỉ bỏ gán tên)
-5. Quét thêm ảnh mới bất cứ lúc nào — app sẽ tự so khớp ảnh mới với những
-   người đã có (không tạo trùng người), giống cách Google/Apple Photos xử
-   lý khi bạn thêm ảnh vào thư viện.
+## Hướng dẫn sử dụng nhanh
 
-### Chuyển ngôn ngữ Việt / English
+1. Bấm **+ Quét thư mục**.
+2. Nhập đường dẫn thư mục ảnh hoặc dùng nút chọn thư mục trong modal.
+3. Chọn có quét thư mục con hay không, chọn ưu tiên GPU nếu máy hỗ trợ.
+4. Bấm **Bắt đầu quét** và chờ thanh tiến độ hoàn tất.
+5. Vào **Con người** để xem các nhóm khuôn mặt.
+6. Click một avatar để mở chi tiết, đặt tên, xem ảnh, gộp với người khác, xoá hoặc khóa người đó.
+7. Nếu cần gộp nhiều nhóm, bật **Chọn nhiều**, chọn các avatar cần gộp, bấm **Gộp vào người khác...**, chọn người đích, rồi xác nhận.
 
-Có công tắc **VI / EN** ở cuối sidebar. Lựa chọn được lưu lại trong trình
-duyệt (`localStorage`), lần sau mở app vẫn giữ nguyên ngôn ngữ đã chọn.
+## Các màn hình trong ứng dụng
 
-### Kiểm tra lại nhóm (Feedback Loop)
+### Ảnh
 
-Bấm **"Kiểm tra lại nhóm"** ở sidebar. App sẽ tìm 2 cụm người có khả năng
-là CÙNG MỘT NGƯỜI cao nhất (nhưng thuật toán chưa đủ tự tin để tự gộp), và
-hỏi bạn từng cặp một:
+Tab **Ảnh** hiển thị toàn bộ ảnh đã quét. Có toggle:
 
-- **"Đúng, gộp lại"** → gộp ngay 2 cụm thành 1 người, rồi tự chuyển sang
-  hỏi cặp tiếp theo.
-- **"Không phải"** → ghi nhớ là 2 cụm này khác người (sẽ không hỏi lại cặp
-  này nữa), chuyển sang cặp tiếp theo.
-- Nút **×** ở góc để đóng bất cứ lúc nào, không bắt buộc phải đi hết toàn
-  bộ danh sách.
+- **Toàn bộ**: xem toàn bộ ảnh trong database.
+- **Dữ liệu mới**: chỉ xem ảnh thuộc lần quét gần nhất.
 
-### Tạo thư mục theo tên
+### Con người
 
-Bấm **"Tạo thư mục theo tên"** ở sidebar để copy/move ảnh vào các thư mục
-theo tên người, ví dụ:
+Tab **Con người** hiển thị mỗi nhóm người bằng avatar, tên và số ảnh. Thanh công cụ ở đầu tab được giữ cố định khi cuộn để bạn có thể đổi phạm vi dữ liệu hoặc bật multi-select nhanh hơn.
 
+Trong chế độ bình thường, click avatar sẽ mở chi tiết người. Trong chế độ **Chọn nhiều**, click avatar sẽ chọn/bỏ chọn nhóm đó. Nút **Gộp vào người khác...** chỉ bật khi đã chọn ít nhất 2 nhóm.
+
+### Chi tiết một người
+
+Màn hình chi tiết cho phép:
+
+- Đặt hoặc sửa tên; app tự lưu sau khi ngừng gõ.
+- Xem ảnh của người đó.
+- Gộp người hiện tại vào người khác; app luôn hỏi xác nhận trước khi gộp.
+- Xoá người này khỏi nhóm hiện tại nhưng vẫn giữ dữ liệu khuôn mặt để có thể gán lại.
+- Khóa người này, xoá vĩnh viễn face embedding và thumbnail khuôn mặt khỏi database.
+
+### Danh sách con người
+
+Tab này phù hợp khi muốn xem nhanh dạng danh sách hoặc kiểm tra đường dẫn file gốc. Chọn một hàng để mở modal danh sách đường dẫn ảnh:
+
+- Màu xanh: file gốc còn tồn tại.
+- Màu xám gạch ngang: file đã bị xoá hoặc di chuyển khỏi đường dẫn cũ.
+
+## Quét thêm dữ liệu
+
+### + Quét thư mục
+
+Dùng khi muốn thêm hoặc cập nhật một thư mục ảnh. App bỏ qua ảnh đã biết, tạo thumbnail còn thiếu, phát hiện khuôn mặt mới và gán vào người đã có nếu đủ giống.
+
+### + Thêm data mới
+
+Dùng khi import một thư mục mới vào workflow hiện có. Sau khi quét xong, nếu trong thư mục mới có ảnh của người đã đặt tên, app có thể tự tổ chức ảnh đó vào thư mục theo tên người. Sau đó app hỏi có muốn dọn thumbnail thừa hay không.
+
+## Tạo thư mục theo tên
+
+Bấm **Tạo thư mục theo tên** để tạo bản copy hoặc move ảnh vào thư mục theo tên người. Cấu trúc đích hiện tại là:
+
+```text
+<scan_root>/
+└── <thư mục con gốc>/
+    └── <Tên người>/
+        └── <file ảnh>
 ```
-<thư mục đã quét>/
-└── Organized/
-    ├── Tony/
-    │   ├── 2024/summer/IMG_001.jpg   ← giữ nguyên thư mục con gốc
-    │   └── IMG_010.jpg
-    └── Mai/
-        └── 2025/IMG_020.jpg
+
+Ví dụ ảnh gốc là:
+
+```text
+D:/Photos/2025/trip/IMG_001.jpg
 ```
 
-- Chỉ những **người đã đặt tên** mới được tổ chức (người chưa đặt tên bị bỏ
-  qua).
-- Ảnh có **nhiều người đã đặt tên** chỉ được đưa vào thư mục của người có
-  khuôn mặt **lớn nhất** trong ảnh đó (tránh nhân bản ảnh vào nhiều nơi).
-- App sẽ hiện **bảng tóm tắt** số ảnh theo từng người và **luôn hỏi xác
-  nhận** trước khi thực hiện, cho bạn chọn:
-  - **Copy**: giữ nguyên ảnh gốc, tạo bản sao (an toàn, khuyên dùng).
-  - **Move**: cắt hẳn ảnh gốc sang thư mục tên (ảnh gốc sẽ không còn ở vị
-    trí cũ — app tự cập nhật lại đường dẫn trong thư viện nên vẫn xem được
-    bình thường trong tab "Ảnh", nhưng nếu bạn có công cụ khác trỏ tới
-    đường dẫn cũ thì sẽ bị mất).
+Nếu người được đặt tên là `Mai`, ảnh copy/move sẽ nằm ở:
+
+```text
+D:/Photos/2025/trip/Mai/IMG_001.jpg
+```
+
+Lưu ý:
+
+- Chỉ người đã đặt tên mới được tổ chức.
+- Một ảnh có nhiều người đã đặt tên chỉ được gán cho người có khuôn mặt lớn nhất trong ảnh.
+- **Copy** giữ ảnh gốc và ghi nhớ đường dẫn copy để lần quét sau không nhận nhầm là ảnh mới.
+- **Move** di chuyển ảnh gốc và cập nhật lại đường dẫn trong database.
+- App luôn hiển thị tóm tắt và hỏi xác nhận trước khi thực hiện.
+- Các bản cũ từng dùng thư mục `Organized/`; bản hiện tại không tạo thư mục bao `Organized` nữa.
+
+## Feedback loop và reclustering
+
+### Kiểm tra lại nhóm
+
+Bấm **Kiểm tra lại nhóm** để app gợi ý từng cặp người có khả năng là cùng một người:
+
+- **Đúng, gộp lại**: gộp hai nhóm.
+- **Không phải**: ghi nhớ cặp này là khác người để không hỏi lại.
+
+### Gộp lại (Reclustering)
+
+Bấm **Gộp lại (Reclustering)** để app tự duyệt các cặp đủ giống theo ngưỡng hiện tại:
+
+- Chạy nền và hiển thị trạng thái/log trong modal.
+- Có nút **Yêu cầu dừng** để dừng ở checkpoint an toàn.
+- Nếu cả hai người đều đã có tên khác nhau, app bỏ qua để tránh gộp nhầm dữ liệu đã xác nhận.
+
+## Cài đặt gom nhóm
+
+Trong **Cài đặt**, có thể chỉnh:
+
+- **Ngưỡng khớp người đã biết** (`sim_threshold`): cao hơn thì khó gộp hơn, giảm nhận nhầm nhưng dễ tách một người thành nhiều nhóm.
+- **Ngưỡng tự tạo nhóm mới** (`dbscan_eps`): dùng khi gom các mặt lạ thành người mới.
+- **Số mặt tối thiểu để tự tạo nhóm** (`dbscan_min_samples`).
+- **Ngưỡng gợi ý Feedback Loop** (`feedback_min_sim`): thấp hơn thì có nhiều gợi ý hơn.
+
+Có nút khôi phục mặc định. Thay đổi cài đặt ảnh hưởng các lần quét/gộp tiếp theo; dữ liệu cũ chỉ thay đổi khi bạn quét lại, feedback, gộp thủ công hoặc chạy reclustering.
+
+## Dọn dẹp thumbnail
+
+Trong **Cài đặt**, mục **Dọn dẹp dữ liệu thumbnail** xoá thumbnail toàn cảnh, thumbnail khuôn mặt chưa đặt tên và cache HEIC không cần thiết. App giữ lại ảnh đại diện của người đã đặt tên. Ảnh/khuôn mặt vẫn có thể hiển thị lại vì thumbnail sẽ được tạo lại từ ảnh gốc khi cần.
+
+## Dữ liệu lưu ở đâu?
+
+Dữ liệu runtime nằm trong `backend/data/`:
+
+- `app.db`: SQLite database.
+- `thumbs/`: thumbnail ảnh và khuôn mặt.
+- Các file/cache khác do quá trình đọc ảnh tạo ra nếu có.
+
+Ảnh gốc của bạn không bị xoá khi quét. Các thao tác có thể ảnh hưởng file gốc gồm:
+
+- **Move** trong **Tạo thư mục theo tên**.
+- Xoá/di chuyển file thủ công bên ngoài app.
+
+Nút **Khóa** chỉ xoá dữ liệu nhận diện và thumbnail khuôn mặt trong app, không xoá ảnh gốc.
 
 ## Cấu trúc project
 
-```
+```text
 face_people_app/
 ├── backend/
-│   ├── main.py           # FastAPI app + toàn bộ API endpoints
-│   ├── face_engine.py     # Detection + Embedding (InsightFace)
-│   ├── clustering.py      # Gom nhóm khuôn mặt theo người
-│   ├── db.py               # SQLite (images, faces, persons)
-│   ├── utils.py            # Đọc ảnh (kể cả HEIC), tạo thumbnail
+│   ├── main.py              # FastAPI app và API endpoints
+│   ├── face_engine.py       # InsightFace detection + embedding
+│   ├── clustering.py        # Matching, DBSCAN, merge/recluster logic
+│   ├── db.py                # SQLite schema và truy vấn
+│   ├── organize.py          # Copy/move ảnh vào thư mục theo tên
+│   ├── cleanup.py           # Dọn thumbnail/cache
+│   ├── utils.py             # Đọc ảnh, HEIC, thumbnail, liệt kê ảnh
 │   ├── requirements.txt
-│   └── data/                # Tự tạo khi chạy: SQLite DB + thumbnails
+│   └── data/                # Tự tạo khi chạy
 ├── frontend/
-│   ├── index.html
-│   ├── style.css           # Giao diện phong cách Apple Photos
-│   └── app.js
+│   ├── index.html           # Markup UI
+│   ├── style.css            # Styling giao diện
+│   └── app.js               # Logic frontend + i18n
+├── run.bat                  # Script chạy trên Windows nếu dùng
 └── README.md
 ```
 
-## Tinh chỉnh độ chính xác clustering
+## Định dạng ảnh hỗ trợ
 
-Trong `backend/clustering.py`:
+App hỗ trợ các định dạng phổ biến gồm JPG/JPEG, PNG, WEBP, BMP và HEIC/HEIF. Ảnh RAW như CR2/NEF hiện chưa được hỗ trợ.
 
-- `SIM_THRESHOLD` (mặc định `0.42`): ngưỡng để coi 1 khuôn mặt mới là
-  "đã biết". **Tăng lên** (vd `0.5`) nếu app đang gộp nhầm 2 người khác nhau
-  vào 1 cụm. **Giảm xuống** (vd `0.35`) nếu app đang tách 1 người thành
-  nhiều cụm khác nhau.
-- `DBSCAN_EPS` / `DBSCAN_MIN_SAMPLES`: điều chỉnh cách các khuôn mặt "lạ"
-  (không khớp ai) tự gom thành người mới.
+## Quyền riêng tư và bảo mật
 
-Sau khi đổi giá trị, xoá file `backend/data/app.db` và quét lại để áp dụng
-từ đầu, hoặc chỉ cần quét ảnh mới để áp dụng cho những ảnh sau này.
+- Ảnh, embedding, database và thumbnail đều nằm trên máy chạy app.
+- App không upload ảnh lên dịch vụ bên ngoài.
+- InsightFace có thể tải model ở lần chạy đầu; sau đó có thể chạy offline nếu model đã có sẵn.
+- Chưa có đăng nhập/phân quyền, nên chỉ chạy trên `127.0.0.1` hoặc mạng tin cậy.
 
-## Quyền riêng tư
+## Ghi chú nâng cấp từ bản cũ
 
-Toàn bộ xử lý — detection, embedding, clustering — chạy **hoàn toàn local**
-trên máy bạn. Không có ảnh hay embedding nào được gửi lên server bên ngoài.
-Database (`backend/data/app.db`) và thumbnail đều lưu tại máy bạn.
-
-### Chạy lại "Tạo thư mục theo tên" nhiều lần có an toàn không?
-
-**Có.** App ghi nhớ vị trí gốc tương đối (`rel_path`) của mỗi ảnh ngay từ
-lúc quét, không tính lại từ đường dẫn hiện tại — nên dù bạn đã Copy/Move
-rồi chạy lại nhiều lần, hoặc đổi từ Copy sang Move, app đều:
-
-- **Bỏ qua (skip)** các ảnh đã có sẵn ở đúng vị trí đích (không tạo bản
-  trùng, không lồng `Organized/Organized/...`).
-- Chỉ xử lý các ảnh **chưa được tổ chức** hoặc ảnh mới quét thêm vào.
-
-Nếu bạn đã từng dùng bản trước bị lỗi lồng thư mục, lần chạy tới trên bản
-cập nhật này app sẽ tự nhận diện và bỏ qua phần tiền tố `Organized/<Tên>/`
-bị lồng sai đó khi tính lại đường dẫn đích.
-
-### Cài đặt & Gộp lại (Reclustering)
-
-Bấm **"Cài đặt"** ở sidebar để chỉnh 4 thông số bằng thanh trượt, có hiệu
-lực ngay không cần khởi động lại server:
-
-- **Ngưỡng khớp người đã biết** (`sim_threshold`, mặc định `0.42`): dùng
-  lúc quét để so mặt mới với người đã có.
-- **Ngưỡng tự tạo nhóm mới** (`dbscan_eps`, mặc định `0.40`): dùng cho mặt
-  "lạ" khi tự gom thành người mới.
-- **Số mặt tối thiểu để tự tạo nhóm** (`dbscan_min_samples`, mặc định `2`).
-- **Ngưỡng gợi ý Feedback Loop** (`feedback_min_sim`, mặc định `0.20`).
-
-Có nút **"Khôi phục mặc định"** nếu chỉnh lỡ tay.
-
-Đổi thông số **không tự động áp dụng lại cho dữ liệu đã có** — bạn cần:
-
-- **Quét lại thư mục** để áp dụng cho ảnh mới, hoặc
-- Bấm **"Gộp lại (Reclustering)"** để app tự gộp ngay các cặp người hiện
-  có đang có độ giống nhau ≥ ngưỡng "khớp người đã biết" mới.
-
-**An toàn dữ liệu đã đặt tên:** nếu 2 người trong 1 cặp **đều đã có tên**
-(ví dụ bạn đã xác nhận đây là "Tony" và đây là "Mai"), Reclustering sẽ
-**không tự gộp** dù độ giống có cao đến đâu — tránh việc chỉnh ngưỡng lỡ
-tay làm gộp nhầm 2 người thật khác nhau. Trường hợp đó bạn vẫn cần xác
-nhận tay qua "Kiểm tra lại nhóm" hoặc nút "Gộp" thủ công trong trang chi
-tiết từng người.
-
-**Lưu ý:** refresh trang trình duyệt **không** kích hoạt lại bất kỳ tính
-toán gom nhóm nào — mọi việc gom nhóm chỉ chạy khi bạn **Quét thư mục**
-hoặc bấm **Gộp lại**.
-
-### Nếu bạn đang nâng cấp từ bản trước (đã có `data/app.db` cũ)
-
-Bản cũ chưa lưu "thư mục gốc đã quét" cho từng ảnh, nên tính năng "Tạo thư
-mục theo tên" sẽ chỉ giữ được đúng cấu trúc thư mục con cho những ảnh được
-**quét lại** sau khi cập nhật. Với ảnh cũ chưa quét lại, app sẽ tự lấy
-thư mục cha trực tiếp của ảnh làm gốc (vẫn hoạt động, chỉ là cấu trúc
-thư mục con phía trên có thể không được giữ nguyên 100%). Khuyên bạn nên
-quét lại thư mục ảnh 1 lần sau khi cập nhật để chuẩn nhất — ảnh không đổi
-sẽ không bị chạy lại nhận diện khuôn mặt, chỉ cập nhật thông tin thư mục
-gốc nên rất nhanh.
-
-## Giới hạn hiện tại (biết trước để không bất ngờ)
-
-- **Tên thư mục "Organized" là tên dành riêng cho app** (nơi lưu ảnh đã tổ
-  chức theo tên). Khi quét, app tự động **bỏ qua mọi thư mục con tên đúng
-  "Organized"** để tránh quét lại ảnh đã tổ chức như thể là ảnh mới. Nếu
-  bạn có sẵn 1 thư mục ảnh gốc tên trùng là "Organized", ảnh trong đó sẽ
-  không được quét — hãy đổi tên thư mục đó trước khi quét.
-
-- UI đang tối ưu cho vài trăm–vài nghìn ảnh (SQLite + xử lý tuần tự). Nếu
-  scale lên hàng chục nghìn ảnh, nên chuyển sang xử lý song song
-  (multiprocessing) và có thể cần vector DB (FAISS) thay vì so khớp centroid
-  tuần tự trong Python — mình có thể nâng cấp phần này nếu bạn cần.
-- Ảnh RAW (.CR2, .NEF...) chưa được hỗ trợ, chỉ JPG/PNG/WEBP/BMP/HEIC.
-- Chưa có xác thực người dùng — chỉ nên chạy trên `127.0.0.1`, không expose
-  ra internet.
+- Nếu database cũ chưa có `scan_root`/`rel_path`, app vẫn cố gắng suy ra đường dẫn tương đối từ đường dẫn hiện tại. Để tổ chức thư mục chính xác nhất, nên quét lại thư mục ảnh một lần sau khi nâng cấp.
+- Bản hiện tại không còn tạo thư mục bao `Organized`; nếu trước đó đã có ảnh trong cấu trúc cũ, logic tổ chức sẽ cố tránh lồng lại `Organized/Organized/...`.

@@ -75,9 +75,27 @@ def _to_vec(embedding_json: str) -> np.ndarray:
 def _person_centroid(conn, person_id) -> np.ndarray:
     faces = db.get_faces_for_person(conn, person_id)
     vecs = [_to_vec(f["embedding"]) for f in faces]
+    if not vecs:
+        return None
     centroid = np.mean(vecs, axis=0)
     n = np.linalg.norm(centroid)
     return centroid / n if n > 0 else centroid
+
+
+def _person_centroid_and_count(conn, person_id):
+    """
+    Giống _person_centroid nhưng trả kèm số khuôn mặt hiện có, để
+    run_incremental_clustering có thể cập nhật centroid dạng "trung bình
+    có trọng số thật" (weighted running mean) thay vì cộng dồn xấp xỉ.
+    """
+    faces = db.get_faces_for_person(conn, person_id)
+    vecs = [_to_vec(f["embedding"]) for f in faces]
+    if not vecs:
+        return None, 0
+    centroid = np.mean(vecs, axis=0)
+    n = np.linalg.norm(centroid)
+    centroid = centroid / n if n > 0 else centroid
+    return centroid, len(vecs)
 
 
 def run_incremental_clustering(conn, progress_cb=None):
@@ -96,8 +114,13 @@ def run_incremental_clustering(conn, progress_cb=None):
 
     existing_persons = db.list_persons(conn)
     centroids = {}
+    counts = {}
     for p in existing_persons:
-        centroids[p["id"]] = _person_centroid(conn, p["id"])
+        centroid, count = _person_centroid_and_count(conn, p["id"])
+        if centroid is None:
+            continue
+        centroids[p["id"]] = centroid
+        counts[p["id"]] = count
 
     unmatched = []
     assigned_existing = 0
@@ -114,8 +137,14 @@ def run_incremental_clustering(conn, progress_cb=None):
         if best_pid is not None and best_sim >= sim_threshold:
             db.set_face_person(conn, face["id"], best_pid, commit=False)
             assigned_existing += 1
-            centroids[best_pid] = (centroids[best_pid] + vec)
-            centroids[best_pid] /= np.linalg.norm(centroids[best_pid])
+            # Trung bình có trọng số thật: centroid_mới = (centroid_cũ * n + vec) / (n + 1)
+            # thay vì cộng dồn rồi chuẩn hoá (khiến mặt đến sau có trọng số
+            # ngày càng nhỏ so với mặt đến trước một cách không chủ ý).
+            n = counts[best_pid]
+            updated = (centroids[best_pid] * n + vec) / (n + 1)
+            norm = np.linalg.norm(updated)
+            centroids[best_pid] = updated / norm if norm > 0 else updated
+            counts[best_pid] = n + 1
         else:
             unmatched.append(face)
 

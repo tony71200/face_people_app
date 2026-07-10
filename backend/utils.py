@@ -22,10 +22,12 @@ def list_images(folder: str, recursive: bool = True):
     """
     Duyệt thư mục, trả về danh sách đường dẫn ảnh hợp lệ.
 
-    Lưu ý: bỏ qua mọi thư mục con tên đúng "Organized" — đây là thư mục do
-    chính app này tạo ra khi dùng tính năng "Tạo thư mục theo tên". Nếu
-    không loại trừ, lần quét sau sẽ nhận nhầm các ảnh đã tổ chức là ảnh
-    mới, gây trùng lặp dữ liệu.
+    Lưu ý: vẫn bỏ qua thư mục con tên đúng "Organized" nếu gặp — đây là lớp
+    bảo vệ dự phòng cho những setup cũ (trước khi tính năng "Tạo thư mục
+    theo tên" bỏ hẳn thư mục bao "Organized"). Với cấu trúc MỚI (không còn
+    thư mục "Organized"), cơ chế chống quét trùng chính nằm ở main.py:
+    _do_scan() sẽ tự loại trừ các đường dẫn đã có trong bảng
+    organized_paths (xem db.get_organized_paths_set) trước khi xử lý.
     """
     base = Path(folder)
     if not base.exists():

@@ -21,6 +21,10 @@
         <svg viewBox="0 0 24 24" class="icon"><circle cx="9" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 19c0-3.3 2.7-6 6-6s6 2.7 6 6" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="17" cy="9" r="2.3" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M15 19c0-2.6 1-4.6 2.5-5.7" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
         <span data-i18n="nav_people">Con người</span>
       </button>
+      <button class="nav-item" data-view="people-list">
+        <svg viewBox="0 0 24 24" class="icon"><path d="M4 6h2M4 12h2M4 18h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M9 6h11M9 12h11M9 18h11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span data-i18n="nav_people_list">Danh sách con người</span>
+      </button>
     </nav>
 
     <div class="sidebar-tools">
@@ -51,6 +55,7 @@
         </span>
       </label>
       <button id="scanBtn" class="btn-primary" data-i18n="scan_button">+ Quét thư mục</button>
+      <button id="importDataBtn" class="btn-secondary" data-i18n="import_data_btn">+ Thêm data mới</button>
     </div>
   </aside>
 
@@ -63,6 +68,10 @@
     </header>
 
     <section id="view-photos" class="view active">
+      <div class="data-scope-toggle" id="photosScopeToggle">
+        <button class="scope-btn active" data-scope="all" data-i18n="scope_all">Toàn bộ</button>
+        <button class="scope-btn" data-scope="new" data-i18n="scope_new">Dữ liệu mới</button>
+      </div>
       <div id="photosGrid" class="grid"></div>
       <div id="photosEmpty" class="empty-state" style="display:none">
         <p data-i18n="empty_photos">Chưa có ảnh nào.</p>
@@ -71,10 +80,37 @@
     </section>
 
     <section id="view-people" class="view">
+      <div class="people-toolbar">
+        <div class="data-scope-toggle" id="peopleScopeToggle">
+          <button class="scope-btn active" data-scope="all" data-i18n="scope_all">Toàn bộ</button>
+          <button class="scope-btn" data-scope="new" data-i18n="scope_new">Dữ liệu mới</button>
+        </div>
+        <div class="people-toolbar-actions">
+          <label class="multi-select-toggle">
+            <input type="checkbox" id="peopleMultiSelectCheck">
+            <span class="multi-select-box" aria-hidden="true"></span>
+            <span data-i18n="multi_select_label">Chọn nhiều</span>
+          </label>
+          <button id="multiMergeBtn" class="btn-secondary multi-merge-btn" data-i18n="multi_merge_btn" disabled>Gộp vào người khác...</button>
+          <span id="multiSelectCount" class="multi-select-count"></span>
+        </div>
+      </div>
       <div id="peopleGrid" class="grid people-grid"></div>
       <div id="peopleEmpty" class="empty-state" style="display:none">
         <p data-i18n="empty_people">Chưa nhận diện được ai.</p>
         <p class="empty-sub" data-i18n="empty_people_sub">Quét một thư mục ảnh để bắt đầu nhóm khuôn mặt.</p>
+      </div>
+    </section>
+
+    <section id="view-people-list" class="view">
+      <div class="data-scope-toggle" id="peopleListScopeToggle">
+        <button class="scope-btn active" data-scope="all" data-i18n="scope_all">Toàn bộ</button>
+        <button class="scope-btn" data-scope="new" data-i18n="scope_new">Dữ liệu mới</button>
+      </div>
+      <p class="people-list-sub" data-i18n="people_list_sub">Xem nhanh dạng danh sách. Chọn 1 người để xem toàn bộ đường dẫn ảnh gốc trên máy.</p>
+      <div id="peopleListContainer" class="people-list"></div>
+      <div id="peopleListEmpty" class="empty-state" style="display:none">
+        <p data-i18n="empty_people">Chưa nhận diện được ai.</p>
       </div>
     </section>
 
@@ -89,6 +125,7 @@
         <div class="person-actions">
           <button id="mergeBtn" class="btn-secondary" data-i18n="merge_btn">Gộp với người khác...</button>
           <button id="deletePersonBtn" class="btn-danger" data-i18n="delete_person_btn">Xoá người này</button>
+          <button id="lockPersonBtn" class="btn-lock" data-i18n="lock_person_btn" title="" data-i18n-title="lock_person_tooltip">🔒 Khóa</button>
         </div>
       </div>
       <div id="personPhotosGrid" class="grid"></div>
@@ -99,8 +136,9 @@
 <!-- Scan Modal -->
 <div id="scanModal" class="modal-overlay" style="display:none">
   <div class="modal">
-    <h2 data-i18n="scan_modal_title">Quét thư mục ảnh</h2>
+    <h2 id="scanModalTitle" data-i18n="scan_modal_title">Quét thư mục ảnh</h2>
     <p class="modal-sub" data-i18n="scan_modal_sub">Nhập đường dẫn thư mục chứa ảnh trên máy bạn (hỗ trợ JPG, PNG, WEBP, HEIC).</p>
+    <p id="importHint" class="modal-sub import-hint" style="display:none" data-i18n="import_hint">Sau khi quét xong, ảnh của người đã đặt tên trong folder này sẽ được tự động sắp xếp vào thư mục theo tên (vẫn nhận diện đúng người đã có từ trước, dù ở folder khác).</p>
     <div class="folder-input-row">
       <input id="folderInput" type="text" data-i18n-placeholder="folder_placeholder" placeholder="Ví dụ: C:\Users\Tony\Pictures hoặc /home/tony/photos" />
       <button id="browseFolderBtn" class="btn-icon" title="Chọn thư mục...">
@@ -251,6 +289,15 @@
       <p class="setting-desc" data-i18n="setting_feedback_min_sim_desc">Càng thấp càng gợi ý nhiều cặp hơn (kể cả những cặp chỉ hơi giống nhau).</p>
     </div>
 
+    <div class="setting-row cleanup-row">
+      <div class="setting-label">
+        <span data-i18n="cleanup_title">Dọn dẹp dữ liệu thumbnail</span>
+      </div>
+      <p class="setting-desc" data-i18n="cleanup_desc">Xoá các thumbnail không cần thiết trong thư mục data (ảnh toàn cảnh, khuôn mặt của người chưa đặt tên, cache HEIC), chỉ giữ lại ảnh đại diện của người đã đặt tên. Ảnh/khuôn mặt vẫn hiển thị lại bình thường sau đó (tự tạo lại từ ảnh gốc khi cần), chỉ chậm hơn một chút ở lần xem đầu tiên.</p>
+      <div id="cleanupResult" class="organize-result" style="display:none"></div>
+      <button id="cleanupThumbsBtn" class="btn-secondary" data-i18n="cleanup_btn">Dọn dẹp ngay</button>
+    </div>
+
     <div class="modal-buttons">
       <button id="resetSettings" class="btn-secondary" data-i18n="settings_reset">Khôi phục mặc định</button>
       <button id="cancelSettings" class="btn-secondary" data-i18n="close_btn">Đóng</button>
@@ -284,6 +331,19 @@
       <button id="cancelRecluster" class="btn-secondary" data-i18n="close_btn">Đóng</button>
       <button id="requestStopRecluster" class="btn-danger" data-i18n="recluster_stop_btn">Yêu cầu dừng</button>
       <button id="confirmRecluster" class="btn-primary" data-i18n="recluster_confirm_btn">Bắt đầu gộp</button>
+    </div>
+  </div>
+</div>
+
+<!-- Person Paths Modal (danh sách đường dẫn ảnh, dạng text, không thumbnail) -->
+<div id="personPathsModal" class="modal-overlay" style="display:none">
+  <div class="modal modal-wide">
+    <h2 id="personPathsTitle">—</h2>
+    <p class="modal-sub" data-i18n="person_paths_sub">Đường dẫn ảnh gốc trên máy. Xanh = ảnh còn tồn tại. Xám gạch ngang = ảnh đã bị xoá/di chuyển khỏi vị trí này.</p>
+    <div id="personPathsCount" class="people-list-sub"></div>
+    <div id="personPathsList" class="paths-list"></div>
+    <div class="modal-buttons">
+      <button id="closePersonPaths" class="btn-secondary" data-i18n="close_btn">Đóng</button>
     </div>
   </div>
 </div>
